@@ -17,18 +17,18 @@ from app.schemas.realestate.realestate_request import ZoneRequest, ContributionR
 from app.schemas.realestate.realestate_response import ProjectTypeResponse, ZoneResponse
 from app.utils.slider_builder import build_sliders
 from app.exceptions.exceptions_handler import BadRequestException, ServiceUnavailableException, UnauthorizedException
-from AI.engine.prior_asset import ParcelValuation, aggregate_zone, building_cost_index, is_public_owner, ordinance_member_count
-from AI.engine.schema import (
+from engine.prior_asset import ParcelValuation, aggregate_zone, building_cost_index, is_public_owner, ordinance_member_count
+from engine.schema import (
     PER_PYEONG_TO_PER_M2, ParcelInfo, ProjectType, UnitMix, OwnerInput, ProjectParams, UnitType,
 )
-from AI.engine.zone import (
+from engine.zone import (
     FAR_TIERS, SELECTABLE_ZONING, base_zoning, build_zone_summary, business_correction_factor, far_plan,
     normalize_zoning, reconstruction_correction_factor, upzoning,
 )
-from AI.engine.project_type import RECONSTRUCTION, ParcelUse, classify_project, is_apartment
-from AI.engine.calc import MemberCountRange, calc_allocation, calc_area, calc_contribution, calc_project, member_count_range, unit_options
-from AI.predict.construction_cost import predict_cost_per_pyeong
-from AI.predict.sale_price import Trade, fetch_trades, predict_sale_price_per_m2
+from engine.project_type import RECONSTRUCTION, ParcelUse, classify_project, is_apartment
+from engine.calc import MemberCountRange, calc_allocation, calc_area, calc_contribution, calc_project, member_count_range, unit_options
+from predict.construction_cost import predict_cost_per_pyeong
+from predict.sale_price import Trade, fetch_trades, predict_sale_price_per_m2
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime
@@ -725,7 +725,7 @@ async def get_zone(req: ZoneRequest, request: Request, session: Session = Depend
         now = datetime.now()
         parcel_year = now.year if now.month >= 6 else now.year - 1
 
-        #사업 유형 : 아파트 단지(들)만 고르면 재건축, 아파트 외 사유 필지가 섞이면 재개발 (AI/engine/project_type.py).
+        #사업 유형 : 아파트 단지(들)만 고르면 재건축, 아파트 외 사유 필지가 섞이면 재개발 (engine/project_type.py).
         #  아파트 필지에만 총괄표제부·부속지번을 조회한다 (캐시 30일)
         apartment_pnus = [u.pnu for u in uses if u.has_building and is_apartment(u.main_purpose, u.etc_purpose, u.floors)]
         complexes = {pnu: await fetch_apartment_complex_cached(pnu) for pnu in apartment_pnus}

@@ -6,8 +6,8 @@ import os
 from dataclasses import dataclass
 from datetime import date
 
-from AI.predict.construction_cost import CostPrediction, predict_cost_per_pyeong
-from AI.predict.sale_price import SalePrediction, Trade, fetch_trades, predict_sale_price_per_m2
+from predict.construction_cost import CostPrediction, predict_cost_per_pyeong
+from predict.sale_price import SalePrediction, Trade, fetch_trades, predict_sale_price_per_m2
 
 #분양가 추세를 뽑을 때 몇 개월치 실거래를 볼지
 TRADE_MONTHS = 12

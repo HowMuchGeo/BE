@@ -1,8 +1,8 @@
-from AI.engine.rental_cost import DEFAULT_FLOOR_BAND, FLOOR_BANDS
-from AI.engine.schema import ZoneSummary
-from AI.engine.zone import COMMERCIAL_RATIO_MAX, DEFAULT_COMMERCIAL_RATIO_MAX, FarPlan, far_plan
-from AI.predict.construction_cost import CostPrediction
-from AI.predict.sale_price import SalePrediction
+from engine.rental_cost import DEFAULT_FLOOR_BAND, FLOOR_BANDS
+from engine.schema import ZoneSummary
+from engine.zone import COMMERCIAL_RATIO_MAX, DEFAULT_COMMERCIAL_RATIO_MAX, FarPlan, far_plan
+from predict.construction_cost import CostPrediction
+from predict.sale_price import SalePrediction
 
 from app.config.engine_defaults import (
     PARKING_MARGIN_DEFAULT,
@@ -70,9 +70,9 @@ def _period_slider() -> dict:
 
 
 #슬라이드 변수 초기 설정값
-#  cost : 공사비 예측 결과 (AI/predict). 평당 공사비 슬라이더의 초기값·범위로 사용
+#  cost : 공사비 예측 결과 (predict). 평당 공사비 슬라이더의 초기값·범위로 사용
 #  household_count : 구역 세대수. 있으면 조합원 수 슬라이더를 만든다
-#  sale : 분양가 예측 결과 (AI/predict). 일반분양가 슬라이더의 초기값·범위로 사용
+#  sale : 분양가 예측 결과 (predict). 일반분양가 슬라이더의 초기값·범위로 사용
 def build_sliders(
     zone: ZoneSummary,
     cost: CostPrediction,

@@ -4,8 +4,8 @@
 import math
 from dataclasses import dataclass
 
-from AI.engine import policy
-from AI.engine.schema import ParcelInfo, ZoneSummary
+from engine import policy
+from engine.schema import ParcelInfo, ZoneSummary
 
 # 용도지역 → (조례 기준 용적률, 법적상한용적률) %
 # 기준: 서울시 도시계획조례 제55조 제1항 / 상한: 국토계획법 시행령 제85조

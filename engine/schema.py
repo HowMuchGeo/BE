@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from AI.engine.rental_cost import DEFAULT_FLOOR_BAND
+from engine.rental_cost import DEFAULT_FLOOR_BAND
 from enum import Enum
 
 PER_PYEONG_TO_PER_M2 = 1 / 3.3058
@@ -65,7 +65,7 @@ class ProjectParams:
     #  제54조 완화분 임대의 부속토지는 기부채납(무상)이라 이 값을 곱하지 않는다.
     #  기본값 0 = 부속토지 수입을 넣지 않는다 (라우터를 거치지 않는 호출용)
     rental_land_price_per_m2 : float = 0.0
-    #공공기여 방식 (AI/engine/public_contribution.py). 기본값 0 = 토지로만 낼 때 (L3, 라우터가 계산)
+    #공공기여 방식 (engine/public_contribution.py). 기본값 0 = 토지로만 낼 때 (L3, 라우터가 계산)
     #  현금 기부채납액(만원) : "토지 + 현금" 이면 기부면적의 절반을 현금으로 낸다 → 사업비에 더한다
     contribution_cash : float = 0.0
     #  기부채납 공공임대 세대수 : "공공임대 건축물" 이면 공공임대를 지어 기부채납한다 → 인수대금 없음.

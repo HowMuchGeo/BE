@@ -1,5 +1,5 @@
 from app.cache.redis import redis_client
-from AI.predict.sale_price import Trade
+from predict.sale_price import Trade
 from dataclasses import is_dataclass, asdict
 from typing import Optional
 import logging

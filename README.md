@@ -142,13 +142,13 @@ async def get_contribution(req: ContributionRequest, request: Request):
 ## 규칙 유지보수
 
 서울시 기본계획·조례 숫자(4단 용적률, 종상향 공공기여율, 보정계수 범위, 서울시 평균 공시지가 등)는
-`AI/engine/data/policy_rules.json` 에 있다. 바뀌면 이 파일만 고치고 백엔드를 다시 띄운다.
+`engine/data/policy_rules.json` 에 있다. 바뀌면 이 파일만 고치고 백엔드를 다시 띄운다.
 공고·건의 단계 변경은 `pending` 에 두고 뉴스로 감시한다 (사람이 기사를 확인한 뒤 반영).
 
 ```
-python -m AI.maintenance.policy_watch                     # 카카오 웹검색 (KAKAO_API_KEY)
-python -m AI.maintenance.policy_watch --from-file a.json  # 저장한 기사 목록으로
-python -m AI.maintenance.policy_watch --list
-python -m AI.maintenance.policy_watch --apply <id> --source <기사 URL>
+python -m maintenance.policy_watch                     # 카카오 웹검색 (KAKAO_API_KEY)
+python -m maintenance.policy_watch --from-file a.json  # 저장한 기사 목록으로
+python -m maintenance.policy_watch --list
+python -m maintenance.policy_watch --apply <id> --source <기사 URL>
 ```
 

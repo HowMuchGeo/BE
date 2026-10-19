@@ -29,8 +29,8 @@
 # 그 밖의 공공시설 건축물(계수 0.7)은 대지지분을 어떻게 잡느냐에 따라 결과가 크게 달라져 넣지 않았다 (2026-10-08 결정)
 from dataclasses import dataclass
 
-from AI.engine import policy
-from AI.engine.zone import LAND_CONTRIBUTION_COEF
+from engine import policy
+from engine.zone import LAND_CONTRIBUTION_COEF
 
 #계수·한도 (policy_rules.json — 출처는 notes)
 BUILDING_COEF = float(policy.RULES["building_contribution_coef"])       # 공공임대 건축물 1.0

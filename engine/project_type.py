@@ -14,7 +14,7 @@
 #       단지에 딸린 자투리로 보고 재건축 판정을 바꾸지 않는다 (2026-10-08). 건물이 있는 필지는 크기와 무관하게 재개발이다
 from dataclasses import dataclass, field
 
-from AI.engine.prior_asset import is_public_owner
+from engine.prior_asset import is_public_owner
 
 REDEVELOPMENT = "재개발"
 RECONSTRUCTION = "재건축"

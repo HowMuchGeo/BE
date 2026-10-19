@@ -18,9 +18,9 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
-#백엔드는 패키지 경로로, AI/predict 를 sys.path 에 넣고 단독 실행하는 경우도 있어 둘 다 받는다
+#백엔드는 패키지 경로로, predict 를 sys.path 에 넣고 단독 실행하는 경우도 있어 둘 다 받는다
 try:
-    from AI.predict import trend
+    from predict import trend
 except ImportError:
     import trend
 
@@ -232,7 +232,7 @@ def annual_rate(index: dict[str, float] | None = None) -> float:
 #  (측정 분양가 연율 6.86% / 공사비 3.97%. 13년 복리로 외삽하면 노원구가 평당 7,816만원,
 #   18년이면 1억 889만원이 되어 비례율이 238% 까지 치솟았다)
 def long_run_rate() -> float:
-    from AI.predict.construction_cost import load_index as load_cost_index
+    from predict.construction_cost import load_index as load_cost_index
 
     return trend.estimate_annual_rate(load_cost_index()).annual_rate
 

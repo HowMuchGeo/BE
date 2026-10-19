@@ -2,7 +2,7 @@ from math import isfinite
 from pydantic import BaseModel, Field, field_validator, model_validator
 from app.schemas.realestate.realestate_request import ParcelHintDTO, UnitMixEntryDTO
 from app.config.engine_defaults import COMPLETION_GAP_MIN, PROJECT_PERIOD_TRACK
-from AI.engine.rental_cost import FLOOR_BANDS
+from engine.rental_cost import FLOOR_BANDS
 
 #조직 Map View 스키마
 class OrganizationMapView(BaseModel):

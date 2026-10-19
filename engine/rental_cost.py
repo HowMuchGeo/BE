@@ -33,7 +33,7 @@
 import re
 from datetime import date
 
-from AI.engine import policy
+from engine import policy
 
 _RULE = policy.RULES["rental_takeover"]
 

@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from app.services.zone_service import get_cached_exclusive_total, set_cached_exclusive_total
 from app.utils.slider_builder import build_sliders
 from app.exceptions.exceptions_handler import BadRequestException, ServiceUnavailableException, UnauthorizedException
-from AI.engine.calc import (
+from engine.calc import (
     MemberCountRange,
     calc_allocation,
     calc_area,
@@ -43,8 +43,8 @@ from AI.engine.calc import (
     unit_mix_from_household_ratio,
     unit_options,
 )
-from AI.engine.prior_asset import BuildingSpec, ParcelValuation, aggregate_zone, estimate
-from AI.engine.public_contribution import (
+from engine.prior_asset import BuildingSpec, ParcelValuation, aggregate_zone, estimate
+from engine.public_contribution import (
     CASH_MAX_SHARE,
     PRESETS as CONTRIBUTION_PRESETS,
     SITE_VALUE_WEIGHT,
@@ -52,7 +52,7 @@ from AI.engine.public_contribution import (
     mixed_contribution,
     normalize_mix,
 )
-from AI.engine.rental_cost import (
+from engine.rental_cost import (
     ANNOUNCED as RENTAL_ANNOUNCED,
     ANNOUNCED_YM as RENTAL_ANNOUNCED_YM,
     BASEMENT_BUILD_COST_KRW_THOUSAND,
@@ -68,13 +68,13 @@ from AI.engine.rental_cost import (
     takeover_price_per_m2,
     uplift_takeover_price_per_m2,
 )
-from AI.engine.schema import (
+from engine.schema import (
     PER_PYEONG_TO_PER_M2, ParcelInfo, ProjectType, UnitMix, OwnerInput, ProjectParams, UnitType,
 )
-from AI.engine.zone import SIGUNGU_NAME, build_zone_summary, sigungu_code
-from AI.predict import trend
-from AI.predict.construction_cost import contract_excess_rate, load_index, predict_cost_per_pyeong
-from AI.predict.sale_price import escalate as escalate_sale, fetch_trades, predict_sale_price_per_m2
+from engine.zone import SIGUNGU_NAME, build_zone_summary, sigungu_code
+from predict import trend
+from predict.construction_cost import contract_excess_rate, load_index, predict_cost_per_pyeong
+from predict.sale_price import escalate as escalate_sale, fetch_trades, predict_sale_price_per_m2
 from dataclasses import asdict
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -400,7 +400,7 @@ async def get_contribution(req: ContributionRequest, request: Request, session: 
             )
 
         #공공기여 : 종상향 최소 비율 + 허용 → 상한까지의 상한용적률 산식 (노드별, /zone 이 토지 기준으로 계산).
-        #  세부 설정에서 토지 · 공공임대 건축물 · 현금을 기부면적 비율(%)로 섞는다 → AI/engine/public_contribution.py
+        #  세부 설정에서 토지 · 공공임대 건축물 · 현금을 기부면적 비율(%)로 섞는다 → engine/public_contribution.py
         #    토지     : 기부한 땅만큼 건축 대지가 준다 (종전자산은 그대로 두고 연면적만 줄인다)
         #    현금     : 기부면적의 절반까지 (시행령 제14조②). 땅 대신 현금이 사업비가 된다
         #    공공임대 : 땅은 그대로, 공공임대를 지어 기부채납한다 (대지지분·설치비 환산은 아래 build_params 뒤에서 잰다)

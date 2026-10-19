@@ -1,4 +1,4 @@
-from AI.engine import policy
+from engine import policy
 #Engine 파일 기본값
 ENGINE_DEFAULTS = {
     #주차 여유율 = 실제 ÷ 법정 주차대수. 법정 대수는 평형 구성에서 계산한다 (calc.legal_parking_count)
@@ -92,7 +92,7 @@ CONSTRUCTION_YEARS = 3.05
 
 
 #분양가 상승률은 더 이상 상수로 두지 않는다.
-#  AI/predict/data/sale_index.csv (노원구 실거래가지수 83개 분기, 2006~2026) 를 두고
+#  predict/data/sale_index.csv (노원구 실거래가지수 83개 분기, 2006~2026) 를 두고
 #  sale_price.escalate() 가 trend.py 로 매번 회귀한다. 공사비(cost_index.csv)와 같은 구조다.
 #  상수였을 때의 문제 — 지역 고정(노원구), 시점 고정(2026-10 측정), 갱신은 코드 수정
 #  (옛 값 : SALE_PRICE_ANNUAL_RATE = 0.0803, 10년 창. 20년 창으로 재측정하면 6.86%)
@@ -164,7 +164,7 @@ MEMBER_PRICE_TARGET_RATE = 100.0
 MEMBER_PRICE_RATIO_MIN = 0.0
 MEMBER_PRICE_RATIO_MAX = 1.0
 
-#재건축 (아파트 단지만 고르면 자동 판정 — AI/engine/project_type.py)
+#재건축 (아파트 단지만 고르면 자동 판정 — engine/project_type.py)
 #  의무 임대 비율 0 : 도시정비법 제10조 · 시행령 제9조 — 재개발은 임대주택 비율, 재건축은 국민주택규모 비율만 정한다
 RECON_BASE_RENTAL_RATIO = 0.0
 #  법적상한 초과용적률 중 공공주택 비율 : 도시정비법 제54조④ 재건축 30~50%(조례) · 미미삼 정비계획(안) "초과용적률 50% 이상"

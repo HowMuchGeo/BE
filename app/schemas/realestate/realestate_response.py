@@ -54,7 +54,7 @@ class SlidersModel(BaseModel):
 
 #사업 유형 미리 판정 응답 (필지를 고르는 즉시 배지를 띄운다 — 크레딧 없음)
 class ProjectTypeResponse(BaseModel):
-    project_type: str = Field(..., description="재개발 · 재건축 (/zone 과 같은 규칙 — AI/engine/project_type.py)")
+    project_type: str = Field(..., description="재개발 · 재건축 (/zone 과 같은 규칙 — engine/project_type.py)")
     project_type_reason: str = Field(..., description="판정 근거 문장 (배지 툴팁)")
 
 

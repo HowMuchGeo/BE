@@ -10,9 +10,9 @@ import httpx
 import gdown
 import traceback
 
-#Docker 환경에서 상위 Dir 를 통하여 /AI/engine 디렉터리 접근을 위한 경로 추가
+#BE 루트(engine/, predict/ 가 있는 곳)를 sys.path 에 추가 — app/ 밖에서 실행해도 import 되도록
 current_dir = os.path.dirname(os.path.abspath(__file__))
-root_dir = os.path.abspath(os.path.join(current_dir, "../../"))
+root_dir = os.path.abspath(os.path.join(current_dir, ".."))
 print(root_dir)
 if root_dir not in sys.path:
     sys.path.append(root_dir)

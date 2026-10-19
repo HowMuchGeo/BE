@@ -1,7 +1,7 @@
 from dataclasses import dataclass, replace
 
-from AI.engine.prior_asset import BuildingSpec, building_value
-from AI.engine.rental_cost import (
+from engine.prior_asset import BuildingSpec, building_value
+from engine.rental_cost import (
     UPLIFT_BASIS,
     UPLIFT_RATIO,
     takeover_basement_price_per_m2,
@@ -9,7 +9,7 @@ from AI.engine.rental_cost import (
     uplift_takeover_basement_price_per_m2,
     uplift_takeover_price_per_m2,
 )
-from AI.engine.schema import(
+from engine.schema import(
     PER_PYEONG_TO_PER_M2,
     ProjectParams,
     ProjectResult,

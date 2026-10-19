@@ -3,7 +3,7 @@
 #   코드 상수가 아니라 data/policy_rules.json 에 둔다 — 규칙이 바뀌면 파일만 고친다.
 #
 #   pending 은 공고·건의 단계라 아직 반영하지 않은 변경이다.
-#     뉴스 감시 도구(AI/maintenance/policy_watch.py)가 기사를 찾아 확정 신호를 보여주고,
+#     뉴스 감시 도구(maintenance/policy_watch.py)가 기사를 찾아 확정 신호를 보여주고,
 #     사람이 기사를 확인한 뒤 --apply 로 rules 에 덮어쓴다. 법규라 기사 문장으로 자동 반영하지 않는다
 #
 #   ※ 백엔드는 시작할 때 한 번 읽는다 → 파일을 고치면 백엔드를 다시 띄워야 한다 (uvicorn --reload 는 .py 만 감시)

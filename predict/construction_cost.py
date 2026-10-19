@@ -7,11 +7,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from statistics import median
 
-#백엔드는 패키지 경로(AI.predict.construction_cost)로 부르고,
-#  AI/predict 를 sys.path 에 넣고 단독 실행하는 경우도 있어 두 방식을 모두 받는다
+#백엔드는 패키지 경로(predict.construction_cost)로 부르고,
+#  predict 를 sys.path 에 넣고 단독 실행하는 경우도 있어 두 방식을 모두 받는다
 try:
-    from AI.predict import trend
-except ImportError:      # AI/predict 가 sys.path 에 직접 들어간 경우
+    from predict import trend
+except ImportError:      # predict 가 sys.path 에 직접 들어간 경우
     import trend
 
 # Dataset 불러오기

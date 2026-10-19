@@ -1,12 +1,12 @@
 # 규칙 변경 뉴스 감시 (유지보수용)
-#   AI/engine/data/policy_rules.json 의 pending(공고·건의 단계 변경)마다 뉴스를 찾아,
+#   engine/data/policy_rules.json 의 pending(공고·건의 단계 변경)마다 뉴스를 찾아,
 #   확정(고시·시행) 신호가 있는지 보여준다. 반영은 사람이 기사를 확인한 뒤 --apply 로 한다 —
 #   법규를 기사 문장만으로 자동 반영하지 않는다 (공고 → 재공람·심의 → 고시 사이에 내용이 바뀌기도 한다)
 #
-#   python -m AI.maintenance.policy_watch                     # 카카오 웹검색 (뉴스 패널과 같은 API, 환경변수 KAKAO_API_KEY)
-#   python -m AI.maintenance.policy_watch --from-file a.json  # 저장한 기사 목록으로 검사 [{title, contents, url, published_at}]
-#   python -m AI.maintenance.policy_watch --list              # 지금 규칙 값과 대기 중인 변경
-#   python -m AI.maintenance.policy_watch --apply <id> --source <확인한 기사 URL>
+#   python -m maintenance.policy_watch                     # 카카오 웹검색 (뉴스 패널과 같은 API, 환경변수 KAKAO_API_KEY)
+#   python -m maintenance.policy_watch --from-file a.json  # 저장한 기사 목록으로 검사 [{title, contents, url, published_at}]
+#   python -m maintenance.policy_watch --list              # 지금 규칙 값과 대기 중인 변경
+#   python -m maintenance.policy_watch --apply <id> --source <확인한 기사 URL>
 #
 #   반영하면 policy_rules.json 이 바뀐다 → 백엔드를 다시 띄워야 계산에 들어간다
 import argparse
@@ -20,7 +20,7 @@ import urllib.request
 from datetime import date
 from pathlib import Path
 
-from AI.engine import policy
+from engine import policy
 
 KAKAO_SEARCH_URL = "https://dapi.kakao.com/v2/search/web"
 
