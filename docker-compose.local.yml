@@ -1,0 +1,27 @@
+#로컬 테스트용 DB
+#  실행 : docker compose -f docker-compose.local.yml up -d
+#  중지 : docker compose -f docker-compose.local.yml down      (데이터 유지)
+#  초기화 : docker compose -f docker-compose.local.yml down -v  (데이터 삭제)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: howmuch-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: howmuch
+      POSTGRES_PASSWORD: howmuch
+      POSTGRES_DB: howmuch
+      TZ: Asia/Seoul
+    ports:
+      #로컬에 이미 Postgres 가 떠 있어도 충돌하지 않도록 55432 사용
+      - "55432:5432"
+    volumes:
+      - howmuch-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U howmuch -d howmuch"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  howmuch-pgdata:
