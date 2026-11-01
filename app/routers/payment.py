@@ -32,7 +32,9 @@ PERSONAL_CREDIT_PACK_PRICE = 500
 KAKAO_PAYMENT_SECERT_KEY = os.getenv("KAKAO_PAYMENT_SECERT_KEY")
 KAKAO_PAYMENT_CID = os.getenv("KAKAO_PAYMENT_CID")
 KAKAO_PAYMENT_BASE_URL = os.getenv("KAKAO_PAYMENT_BASE_URL")
-BACKEND_URL = os.getenv("BACKEND_URL")
+#끝 "/" 제거 — 붙어 있으면 "...onrender.com//api/..." 가 되어 카카오페이가 거절한다
+BACKEND_URL = (os.getenv("BACKEND_URL") or "").rstrip("/")
+FRONTEND_URL = (os.getenv("FRONTEND_URL") or "").rstrip("/")
 
 #환경변수 유무 확인
 if not KAKAO_PAYMENT_SECERT_KEY:
@@ -153,7 +155,7 @@ async def kakao_credit_purchase_approve(
     session.commit()
 
     return RedirectResponse(
-        url=f"{os.getenv('FRONTEND_URL')}/credits/payment?status=success&credits={order.credit_amount}",
+        url=f"{FRONTEND_URL}/credits/payment?status=success&credits={order.credit_amount}",
         status_code=303,
     )
 
@@ -161,13 +163,13 @@ async def kakao_credit_purchase_approve(
 @router.get("/kakao-pay/credits/cancel")
 def kakao_credit_purchase_cancel(partner_order_id: str = Query(...), session: Session = Depends(get_db)):
     _update_credit_purchase_status(session, partner_order_id, "cancelled")
-    return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/credits/payment?status=cancel", status_code=303)
+    return RedirectResponse(url=f"{FRONTEND_URL}/credits/payment?status=cancel", status_code=303)
 
 #크레딧 충전 실패 API 엔드포인트
 @router.get("/kakao-pay/credits/fail")
 def kakao_credit_purchase_fail(partner_order_id: str = Query(...), session: Session = Depends(get_db)):
     _update_credit_purchase_status(session, partner_order_id, "failed")
-    return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/credits/payment?status=fail", status_code=303)
+    return RedirectResponse(url=f"{FRONTEND_URL}/credits/payment?status=fail", status_code=303)
 
 def _update_credit_purchase_status(session: Session, partner_order_id: str, new_status: str) -> None:
     order = session.execute(
@@ -321,21 +323,21 @@ async def kakao_pay_approve(
     order.status = "approved"
     session.commit()
     logger.warning("[ Log ] : 결제 승인 API 성공.")
-    return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/payment?status=success", status_code=303)
+    return RedirectResponse(url=f"{FRONTEND_URL}/payment?status=success", status_code=303)
 
 #Plan 결제 취소 API 엔드포인트
 @router.get("/kakao-pay/plans/cancel")
 def kakao_pay_cancel(partner_order_id: str | None = Query(default=None), session: Session = Depends(get_db)):
     logger.warning("[ Log ] : 결제가 취소되었습니다.")
     _update_payment_status(session, partner_order_id, "cancelled")
-    return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/payment?status=cancel", status_code=303)
+    return RedirectResponse(url=f"{FRONTEND_URL}/payment?status=cancel", status_code=303)
 
 #Plan 결제 실패 API 엔드포인트
 @router.get("/kakao-pay/plans/fail")
 def kakao_pay_fail(partner_order_id: str | None = Query(default=None), session: Session = Depends(get_db)):
     logger.warning("[ Log ] : 결제가 실패했습니다.")
     _update_payment_status(session, partner_order_id, "failed")
-    return RedirectResponse(url=f"{os.getenv('FRONTEND_URL')}/payment?status=fail", status_code=303)
+    return RedirectResponse(url=f"{FRONTEND_URL}/payment?status=fail", status_code=303)
 
 #Plan 결제 정보 업데이트 함수
 def _update_payment_status(session: Session, partner_order_id: str | None, new_status: str) -> None:
