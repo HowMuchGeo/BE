@@ -39,7 +39,9 @@ from app.routers.organization import router as organization_router
 #Database 테이블 생성 이벤트 핸들러 등록
 @app.on_event("startup")
 def create_tables():
-    Base.metadata.drop_all(bind=engine)
+    #주의: drop_all 은 모든 테이블·데이터를 지운다. 로컬에서 스키마를 초기화할 때만 RESET_DB=true 로 켠다
+    if os.getenv("RESET_DB", "").lower() == "true":
+        Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
 #AI 모델 라우터 등록
@@ -65,7 +67,8 @@ app.add_middleware(
 #MiddleWare 설정 (개발단계 임시 설정)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL],
+    #브라우저 Origin 헤더에는 끝 "/" 가 없다 → 환경변수에 "/" 가 붙어 있어도 맞도록 제거
+    allow_origins=[FRONTEND_URL.rstrip("/")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
