@@ -35,6 +35,7 @@ from app.routers.user import router as user_router
 from app.routers.news import router as news_router
 from app.routers.payment import router as payment_router
 from app.routers.organization import router as organization_router
+from app.routers.health import router as health_router
 
 #Database 테이블 생성 이벤트 핸들러 등록
 @app.on_event("startup")
@@ -52,6 +53,7 @@ app.include_router(user_router)
 app.include_router(news_router)
 app.include_router(payment_router)
 app.include_router(organization_router)
+app.include_router(health_router)
 
 #사용자 정의 예외 처리기 등록
 add_exception_handlers(app)
