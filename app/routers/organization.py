@@ -181,7 +181,6 @@ def delete_organization_scenario(
     session.delete(scenario)
     session.commit()
 
-
 #가입된 조직 확인 API 엔드포인트
 @router.get("/me")
 def get_my_organization(request: Request, session: Session = Depends(get_db)):

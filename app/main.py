@@ -5,20 +5,17 @@ from app.exceptions.exceptions_handler import add_exception_handlers
 from app.database.database_connection import engine
 from dotenv import load_dotenv
 from app.database.orm import Base
-import os, sys
+from app.config.settings import settings
+import os
 import httpx
 import gdown
 import traceback
 
-#BE 루트(engine/, predict/ 가 있는 곳)를 sys.path 에 추가 — app/ 밖에서 실행해도 import 되도록
-current_dir = os.path.dirname(os.path.abspath(__file__))
-root_dir = os.path.abspath(os.path.join(current_dir, ".."))
-print(root_dir)
-if root_dir not in sys.path:
-    sys.path.append(root_dir)
-
 #.env 파일 로드
 load_dotenv()
+
+#필수 환경변수 검증 — 하나라도 없으면 서버가 뜨지 않는다 (예전에는 각 라우터가 import 시점에 검사)
+settings.validate_required()
 
 #환경 변수 로드
 FRONTEND_URL = os.getenv("FRONTEND_URL")
@@ -40,7 +37,6 @@ from app.routers.health import router as health_router
 #Database 테이블 생성 이벤트 핸들러 등록
 @app.on_event("startup")
 def create_tables():
-    #주의: drop_all 은 모든 테이블·데이터를 지운다. 로컬에서 스키마를 초기화할 때만 RESET_DB=true 로 켠다
     if os.getenv("RESET_DB", "").lower() == "true":
         Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
@@ -69,7 +65,6 @@ app.add_middleware(
 #MiddleWare 설정 (개발단계 임시 설정)
 app.add_middleware(
     CORSMiddleware,
-    #브라우저 Origin 헤더에는 끝 "/" 가 없다 → 환경변수에 "/" 가 붙어 있어도 맞도록 제거
     allow_origins=[FRONTEND_URL.rstrip("/")],
     allow_credentials=True,
     allow_methods=["*"],

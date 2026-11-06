@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-#BE 루트 전체 (app/, engine/, predict/, maintenance/)
+#BE 루트 전체 (app/, maintenance/) — engine · predict 는 app/services/ 아래
 COPY . .
 
 EXPOSE 8000
