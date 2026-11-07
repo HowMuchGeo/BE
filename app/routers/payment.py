@@ -12,9 +12,10 @@ from app.models.credit_purchase import CreditPurchaseOrder
 from app.services.plan_service import get_plan, add_plan_duration
 from app.services.organization_service import has_unlimited_credits
 from app.services.credit_service import fulfill_credit_purchase
-import httpx
+from app.clients import kakao_pay
+from app.clients.http import ExternalAPIError
+from app.config.settings import settings
 import logging
-import os
 
 #결제 라우터
 router = APIRouter(
@@ -28,23 +29,9 @@ logger = logging.getLogger(__name__)
 PERSONAL_CREDIT_PACK_SIZE = 5
 PERSONAL_CREDIT_PACK_PRICE = 500
 
-#환경변수 로드
-KAKAO_PAYMENT_SECERT_KEY = os.getenv("KAKAO_PAYMENT_SECERT_KEY")
-KAKAO_PAYMENT_CID = os.getenv("KAKAO_PAYMENT_CID")
-KAKAO_PAYMENT_BASE_URL = os.getenv("KAKAO_PAYMENT_BASE_URL")
-#끝 "/" 제거 — 붙어 있으면 "...onrender.com//api/..." 가 되어 카카오페이가 거절한다
-BACKEND_URL = (os.getenv("BACKEND_URL") or "").rstrip("/")
-FRONTEND_URL = (os.getenv("FRONTEND_URL") or "").rstrip("/")
-
-#환경변수 유무 확인
-if not KAKAO_PAYMENT_SECERT_KEY:
-    raise BadRequestException("KAKAO_PAYMENT_SECERT_KEY 환경 변수가 설정되지 않았습니다.")
-if not KAKAO_PAYMENT_CID:
-    raise BadRequestException("KAKAO_PAYMENT_CID 환경 변수가 설정되지 않았습니다.")
-if not KAKAO_PAYMENT_BASE_URL:
-    raise BadRequestException("KAKAO_PAYMENT_BASE_URL 환경 변수가 설정되지 않았습니다.")
-if not BACKEND_URL:
-    raise BadRequestException("BACKEND_URL 환경 변수가 설정되지 않았습니다.")
+#콜백·리다이렉트 주소 (끝 "/" 는 settings 에서 제거된다). 필수값 검증은 서버 기동 시 app/main.py 에서 한다
+BACKEND_URL = settings.backend_url
+FRONTEND_URL = settings.frontend_url
 
 #크레딧 충전 API 엔드포인트
 @router.post("/kakao-pay/credits/ready")
@@ -59,31 +46,20 @@ async def kakao_credit_purchase_ready(request: Request, session: Session = Depen
 
     partner_order_id = secrets.token_urlsafe(24)
     callback_base = f"{BACKEND_URL}/api/v1/kakao-pay/credits"
-    payload = {
-        "cid": KAKAO_PAYMENT_CID,
-        "partner_order_id": partner_order_id,
-        "partner_user_id": str(user_id),
-        "item_name": "개인 크레딧 5회권",
-        "quantity": 1,
-        "total_amount": PERSONAL_CREDIT_PACK_PRICE,
-        "tax_free_amount": 0,
-        "approval_url": f"{callback_base}/approve?partner_order_id={partner_order_id}",
-        "cancel_url": f"{callback_base}/cancel?partner_order_id={partner_order_id}",
-        "fail_url": f"{callback_base}/fail?partner_order_id={partner_order_id}",
-    }
-    headers = {
-        "Authorization": f"SECRET_KEY {KAKAO_PAYMENT_SECERT_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(f"{KAKAO_PAYMENT_BASE_URL}/ready", headers=headers, json=payload)
-
-    if response.status_code != 200:
-        logger.warning("KakaoPay credit ready failed: %s", response.text)
+    try:
+        result = await kakao_pay.ready(
+            partner_order_id=partner_order_id,
+            partner_user_id=str(user_id),
+            item_name="개인 크레딧 5회권",
+            total_amount=PERSONAL_CREDIT_PACK_PRICE,
+            approval_url=f"{callback_base}/approve?partner_order_id={partner_order_id}",
+            cancel_url=f"{callback_base}/cancel?partner_order_id={partner_order_id}",
+            fail_url=f"{callback_base}/fail?partner_order_id={partner_order_id}",
+        )
+    except ExternalAPIError as err:
+        logger.warning("KakaoPay credit ready failed: %s", err.body)
         raise ServiceUnavailableException("크레딧 결제를 시작하지 못했습니다.")
 
-    result = response.json()
     if not result.get("tid") or not result.get("next_redirect_pc_url"):
         raise ServiceUnavailableException("카카오페이 결제 준비 응답이 올바르지 않습니다.")
 
@@ -121,26 +97,17 @@ async def kakao_credit_purchase_approve(
     if not order or not order.tid or order.status != "ready":
         raise BadRequestException("유효한 크레딧 결제 주문을 찾을 수 없습니다.")
 
-    headers = {
-        "Authorization": f"SECRET_KEY {KAKAO_PAYMENT_SECERT_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "cid": KAKAO_PAYMENT_CID,
-        "tid": order.tid,
-        "partner_order_id": order.partner_order_id,
-        "partner_user_id": str(order.user_id),
-        "pg_token": pg_token,
-    }
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(f"{KAKAO_PAYMENT_BASE_URL}/approve", headers=headers, json=payload)
-
-    if response.status_code != 200:
-        logger.warning("[ Log ] : KakaoPay 크레딧 승인 실패 : %s", response.text)
+    try:
+        approval = await kakao_pay.approve(
+            tid=order.tid,
+            partner_order_id=order.partner_order_id,
+            partner_user_id=str(order.user_id),
+            pg_token=pg_token,
+        )
+    except ExternalAPIError as err:
+        logger.warning("[ Log ] : KakaoPay 크레딧 승인 실패 : %s", err.body)
         raise ServiceUnavailableException("카카오페이 결제가 승인되지 않았습니다.")
 
-    approval = response.json()
     paid_total = (approval.get("amount") or {}).get("total")
     if (
         approval.get("tid") != order.tid
@@ -212,38 +179,25 @@ async def kakao_pay_ready(body: PaymentRequest, request: Request, session: Sessi
 
     #플랜에 대하여 결제 요청 준비
     logger.warning("[ Log ] : 결제 준비 API 시도중.")
-    url = f"{KAKAO_PAYMENT_BASE_URL}/ready"
     partner_order_id = secrets.token_urlsafe(24)
+    callback_base = f"{BACKEND_URL}/api/v1/kakao-pay/plans"
 
-    headers = {
-        "Authorization": f"SECRET_KEY {KAKAO_PAYMENT_SECERT_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "cid": KAKAO_PAYMENT_CID,
-        "partner_order_id": partner_order_id,
-        "partner_user_id": str(user_id),
-        "item_name": plan.name,
-        "quantity": 1,
-        "total_amount": plan.price,
-        "tax_free_amount": 0,
-        "approval_url": f"{BACKEND_URL}/api/v1/kakao-pay/plans/approve?partner_order_id={partner_order_id}",
-        "cancel_url": f"{BACKEND_URL}/api/v1/kakao-pay/plans/cancel?partner_order_id={partner_order_id}",
-        "fail_url": f"{BACKEND_URL}/api/v1/kakao-pay/plans/fail?partner_order_id={partner_order_id}"
-    }
-
-    #비동기 결제 요청
-    async with httpx.AsyncClient() as client:
-        response = await client.post(url, headers=headers, json=payload)
-
-    #요청 실패시 Service Unavailable Exception 발생
-    if response.status_code != 200:
+    #비동기 결제 요청. 실패시 Service Unavailable Exception 발생
+    try:
+        result = await kakao_pay.ready(
+            partner_order_id=partner_order_id,
+            partner_user_id=str(user_id),
+            item_name=plan.name,
+            total_amount=plan.price,
+            approval_url=f"{callback_base}/approve?partner_order_id={partner_order_id}",
+            cancel_url=f"{callback_base}/cancel?partner_order_id={partner_order_id}",
+            fail_url=f"{callback_base}/fail?partner_order_id={partner_order_id}",
+        )
+    except ExternalAPIError as err:
         logger.warning("[ Log ] : 결제 준비 API 호출 실패.")
-        raise ServiceUnavailableException(response.json())
-    
+        raise ServiceUnavailableException(err.body)
+
     #반환 결과 PaymentOrder DB 에 저장 및 반환
-    result = response.json()
 
     session.add(PaymentOrder(
         partner_order_id=partner_order_id,
@@ -256,7 +210,6 @@ async def kakao_pay_ready(body: PaymentRequest, request: Request, session: Sessi
     session.commit()
     logger.warning("[ Log ] : 결제 준비 API 성공.")
     return {"next_redirect_pc_url": result["next_redirect_pc_url"], "tid": result["tid"], "item_name": plan.name, "price": plan.price}
-
 
 #Plan 결제 승인 API 엔드포인트
 @router.get(
@@ -290,30 +243,17 @@ async def kakao_pay_approve(
     if not organization or not plan:
         raise ServiceUnavailableException("결제할 조합 플랜 정보를 찾을 수 없습니다.")
 
-    #요청 준비
-    url = f"{KAKAO_PAYMENT_BASE_URL}/approve"
-
-    headers = {
-        "Authorization": f"SECRET_KEY {KAKAO_PAYMENT_SECERT_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "cid": KAKAO_PAYMENT_CID,
-        "tid": order.tid,
-        "partner_order_id": partner_order_id,
-        "partner_user_id": str(order.user_id),
-        "pg_token": pg_token
-    }
-
-    #비동기 요청
-    async with httpx.AsyncClient() as client:
-        response = await client.post(url, headers=headers, json=payload)
-
-    #요청 실패시 Service Unavailable Exception 발생
-    if response.status_code != 200:
+    #비동기 승인 요청. 실패시 Service Unavailable Exception 발생
+    try:
+        await kakao_pay.approve(
+            tid=order.tid,
+            partner_order_id=partner_order_id,
+            partner_user_id=str(order.user_id),
+            pg_token=pg_token,
+        )
+    except ExternalAPIError as err:
         logger.warning("[ Log ] : 결제 승인 API 실패.")
-        raise ServiceUnavailableException(response.json())
+        raise ServiceUnavailableException(err.body)
 
     #결제 최종 승인시 정보 저장 및 페이지 Redirect
     now = datetime.now(timezone.utc)

@@ -1,5 +1,5 @@
 from app.cache.redis import redis_client
-from predict.sale_price import Trade
+from app.services.predict.sale_price import Trade
 from dataclasses import is_dataclass, asdict
 from typing import Optional
 import logging
@@ -82,7 +82,6 @@ async def set_cached_trades(lawd_cd: str, target_ym: str, trades: list) -> None:
         serialized_data = json.dumps(trades_dict, ensure_ascii=False)
         await redis_client.set(cache_key, serialized_data, ex=86400)
 
-
         #Redis에 저장 성공 시 로깅
         logger.warning(f"[ Log ] : Redis 캐시 저장 성공 : Trade : {cache_key} : (TTL 86400s)")
 
@@ -139,10 +138,6 @@ async def set_cached_land(pnu: str, data: dict):
         logger.warning(f"[ Log ] : Redis 캐시 저장 실패 : Redis 쓰기 오류 : Land : {cache_key} : {err}")
 
 #Redis 를 통한 건축물대장 캐시 불러오기
-#  land:{pnu} 에 합치지 않고 따로 둔다 — 이미 7일 TTL 로 캐시된 기존 항목을 깨지 않고,
-#  건축물대장은 거의 변하지 않아 더 긴 TTL 을 줄 수 있다
-#  키 bld2: — 2026-10-07 기타용도·층수(재조달원가 상대지수용)를 더하면서 바꿨다. 예전 bld: 항목에는 그 필드가 없다
-#  키 bld3: — 2026-10-08 대표 동을 세대가 있는 동에서 고르도록 바꿨다. bld2: 항목은 지하주차장 동이 대표일 수 있다
 async def get_cached_building(pnu: str) -> Optional[dict]:
     cache_key = f"bld3:{pnu}"
 
@@ -158,10 +153,7 @@ async def get_cached_building(pnu: str) -> Optional[dict]:
 
     return None
 
-
-#Redis 를 통한 건축물대장 캐시 저장하기
-#  TTL 30일. 사용승인일·구조·연면적은 바뀌지 않고, 신축·멸실만 반영이 늦어진다.
-#  재개발 구역은 신축이 거의 없어 이 지연이 문제되지 않는다
+#Redis 를 통한 건축물대장 캐시 저장
 async def set_cached_building(pnu: str, data: dict) -> None:
     if not data:
         return
@@ -176,11 +168,7 @@ async def set_cached_building(pnu: str, data: dict) -> None:
     except Exception as err:
         logger.warning(f"[ Log ] : Redis 캐시 저장 실패 : Building : {cache_key} : {err}")
 
-
-
 #Redis 를 통한 전유면적 합계 캐시
-#  전유공용 조회는 호·면적구분마다 한 행이라 대단지는 37페이지(9.7초 실측)가 걸린다.
-#  값 자체는 거의 변하지 않아 길게 캐시한다 (TTL 30일)
 async def get_cached_exclusive_total(pnu: str) -> Optional[float]:
     cache_key = f"exc:{pnu}"
 
@@ -196,9 +184,8 @@ async def get_cached_exclusive_total(pnu: str) -> Optional[float]:
 
     return None
 
-
 async def set_cached_exclusive_total(pnu: str, total: float) -> None:
-    #0 은 "다 못 받았다" 는 뜻이라 캐시하지 않는다. 일시 장애가 굳어버린다
+    #0 은 "다 못 받았다" 는 뜻이라 캐시하지 않음
     if not total:
         return
 
@@ -211,10 +198,7 @@ async def set_cached_exclusive_total(pnu: str, total: float) -> None:
     except Exception as err:
         logger.warning(f"[ Log ] : Redis 캐시 저장 실패 : Exclusive : {cache_key} : {err}")
 
-
 #Redis 를 통한 토지소유정보 캐시
-#  국·공유지를 종전자산에서 빼는 데 쓴다. 소유구분은 거의 바뀌지 않아 30일 둔다
-#own3 : 첫 행만 보던 own: 은 공유 필지를 국공유로 잘못 갈랐고, own2 에는 1997년 전 소유자 수가 없다 → 키를 바꿔 버린다
 async def get_cached_possession(pnu: str) -> Optional[dict]:
     cache_key = f"own3:{pnu}"
 
@@ -228,7 +212,6 @@ async def get_cached_possession(pnu: str) -> Optional[dict]:
 
     return None
 
-
 async def set_cached_possession(pnu: str, data: dict) -> None:
     if not data:
         return
@@ -241,10 +224,7 @@ async def set_cached_possession(pnu: str, data: dict) -> None:
     except Exception as err:
         logger.warning(f"[ Log ] : Redis 캐시 저장 실패 : Possession : {cache_key} : {err}")
 
-
-#Redis 를 통한 재건축용 캐시 — 아파트 필지에만 쓴다 (30일)
-#  aptc2 : 아파트 단지 정보 (총괄표제부 세대수·용적률 산정 연면적·부속지번·상가 호수·연면적)
-#  aptp : 공동주택가격 요약 (호별 공시가격 합계·호수·전용면적별 중앙값). 매년 4월 공시라 30일이면 충분하다
+#Redis 를 통한 재건축용 캐시
 async def _get_json(cache_key: str, label: str) -> Optional[dict]:
     try:
         val = await redis_client.get(cache_key)
@@ -254,7 +234,6 @@ async def _get_json(cache_key: str, label: str) -> Optional[dict]:
         logger.warning(f"[ Log ] : Redis 캐시 불러오기 실패 : {label} : {cache_key} : {err}")
     return None
 
-
 async def _set_json(cache_key: str, label: str, data: dict) -> None:
     if not data:
         return
@@ -263,29 +242,22 @@ async def _set_json(cache_key: str, label: str, data: dict) -> None:
     except Exception as err:
         logger.warning(f"[ Log ] : Redis 캐시 저장 실패 : {label} : {cache_key} : {err}")
 
-
 #aptc2 : 상가(비주거 동) 호수·연면적을 더한 판. 예전 aptc: 값에는 없다
 async def get_cached_apartment(pnu: str) -> Optional[dict]:
     return await _get_json(f"aptc2:{pnu}", "Apartment")
 
-
 async def set_cached_apartment(pnu: str, data: dict) -> None:
     await _set_json(f"aptc2:{pnu}", "Apartment", data)
-
 
 #hsp : 개별주택가격 (단독·다가구) — 재개발 종전자산
 async def get_cached_house_price(pnu: str) -> Optional[dict]:
     return await _get_json(f"hsp:{pnu}", "HousePrice")
 
-
 async def set_cached_house_price(pnu: str, data: dict) -> None:
     await _set_json(f"hsp:{pnu}", "HousePrice", data)
-
 
 async def get_cached_apartment_prices(pnu: str) -> Optional[dict]:
     return await _get_json(f"aptp:{pnu}", "ApartmentPrice")
 
-
 async def set_cached_apartment_prices(pnu: str, data: dict) -> None:
     await _set_json(f"aptp:{pnu}", "ApartmentPrice", data)
-

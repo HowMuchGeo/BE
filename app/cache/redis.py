@@ -12,7 +12,7 @@ REDIS_URL = os.getenv("REDIS_URL")
 if not REDIS_URL:
     raise ValueError("REDIS_URL 환경 변수가 설정되지 않았습니다.")
 
-#Redis 클라이언트 설정
+#Redis 비동기 클라이언트 설정
 redis_client = aioredis.from_url(
     REDIS_URL,
     encoding="utf-8",

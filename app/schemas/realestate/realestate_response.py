@@ -1,7 +1,6 @@
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 
-
 #Parcel & Zone 정보 관련 스키마
 class ParcelInfoModel(BaseModel):
     pnu: str = Field(..., description="필지 고유번호 (19자리)")
@@ -19,23 +18,18 @@ class ZoneSummaryModel(BaseModel):
     far_max: float = Field(..., description="최고 용적률 (%)")
     region: str = Field(..., description="지역 구분")
     warnings: List[str] = Field(default_factory=list, description="경고 메시지 목록")
-    # zone 객체 내에 additional fields가 있다면 Dict[str, Any] 또는 구체적 필드로 확장 가능
     extra: Optional[Dict[str, Any]] = None
-
 
 #예측 정보 스키마
 class CostPredictionModel(BaseModel):
     cost_per_pyeong: float = Field(..., description="평당 예측 공사비 (원)")
     unit: str = Field(default="원/평", description="단위")
-    # predict_cost_per_pyeong 결과 dataclass의 추가 필드들을 여기에 정의
     details: Optional[Dict[str, Any]] = None
 
 #예측 정보 스키마
 class SalePredictionModel(BaseModel):
     sale_price_per_m2: float = Field(..., description="㎡당 예측 분양가 (원)")
-    # predict_sale_price_per_m2 결과 dataclass의 추가 필드들을 여기에 정의
     details: Optional[Dict[str, Any]] = None
-
 
 #슬라이더 스키마
 class SliderConfigModel(BaseModel):
@@ -48,15 +42,12 @@ class SliderConfigModel(BaseModel):
 class SlidersModel(BaseModel):
     far: Optional[SliderConfigModel] = Field(None, description="용적률 슬라이더 설정")
     household_count: Optional[SliderConfigModel] = Field(None, description="세대수 슬라이더 설정")
-    # build_sliders()가 반환하는 슬라이더 구조에 맞게 자유롭게 dictionary 형태도 가능
     extra_sliders: Optional[Dict[str, Any]] = None
 
-
-#사업 유형 미리 판정 응답 (필지를 고르는 즉시 배지를 띄운다 — 크레딧 없음)
+#사업 유형 미리 판정 응답
 class ProjectTypeResponse(BaseModel):
-    project_type: str = Field(..., description="재개발 · 재건축 (/zone 과 같은 규칙 — engine/project_type.py)")
+    project_type: str = Field(..., description="재개발 · 재건축 (/zone 과 같은 규칙 — app/services/engine/project_type.py)")
     project_type_reason: str = Field(..., description="판정 근거 문장 (배지 툴팁)")
-
 
 #Zone API 응답 스키마
 class ZoneResponse(BaseModel):
@@ -98,7 +89,6 @@ class ContributionUnitType(BaseModel):
     supply_area_m2: float = Field(..., description="공급면적 (㎡)")
     count: int = Field(..., description="배분 세대수")
 
-
 #사업 계산 결과 스키마
 class ContributionProject(BaseModel):
     unit_types: List[ContributionUnitType] = Field(..., description="분양 평형별 세대수")
@@ -111,7 +101,6 @@ class ContributionProject(BaseModel):
     proportional_rate: float = Field(..., description="비례율 (%)")
     warnings: List[str] = Field(default_factory=list, description="사업성 계산 경고 메시지")
 
-
 #조합원 평형 선택 옵션 스키마
 class UnitOption(BaseModel):
     name: str = Field(..., description="평형 이름")
@@ -119,9 +108,7 @@ class UnitOption(BaseModel):
     count: int = Field(..., description="배분 세대수")
     member_price: float = Field(..., description="조합원 분양가")
 
-#평형별 분담금 스키마 ("예상 분담금" 패널에 전부 깔아 보여주는 값)
-#  사용자가 평형을 고르지 않아도 분양 평형 전부의 분담금이 한 번에 내려온다.
-#  임대는 조합원 분양 대상이 아니라 목록에 없다
+#평형별 분담금 스키마
 class UnitContributionModel(BaseModel):
     name: str = Field(..., description="평형 이름 (전용면적 숫자)")
     exclusive_area_m2: float = Field(..., description="전용면적 (㎡)")
@@ -130,7 +117,6 @@ class UnitContributionModel(BaseModel):
     member_price: float = Field(..., description="조합원 분양가 (만원)")
     contribution: float = Field(..., description="분담금 (만원). 음수면 환급")
     contribution_ratio: float = Field(..., description="분담금 ÷ 조합원 분양가")
-
 
 #Member Count 스키마
 class MemberCountRange(BaseModel):
