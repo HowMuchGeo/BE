@@ -22,6 +22,11 @@ class ServiceUnavailableException(CustomException):
     def __init__(self, message: str = "[ Backend ] : Service Unavailable 503 Error"):
         super().__init__(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, message=message)
 
+#사용자 정의 Too Many Requests 예외 클래스 정의
+class TooManyRequestsException(CustomException):
+    def __init__(self, message: str = "[ Backend ] : Too Many Requests 429 Error"):
+        super().__init__(status_code=status.HTTP_429_TOO_MANY_REQUESTS, message=message)
+
 class BadRequestException(CustomException):
     def __init__(self, message: str = "[ Backend ] : Bad Request 400 Error"):
         super().__init__(status_code=status.HTTP_400_BAD_REQUEST, message=message)

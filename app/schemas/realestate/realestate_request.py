@@ -7,10 +7,14 @@ class ParcelHintDTO(BaseModel):
     area_m2: Optional[float] = Field(None, description="필지 면적(㎡). 폴리곤에서 계산한 값")
     land_price_per_m2: Optional[float] = Field(None, description="개별공시지가(원/㎡)")
 
+#한 번에 분석할 수 있는 최대 필지 수. 필지마다 외부 API 를 여러 번 부르므로 상한이 없으면
+#한 요청이 외부 API 처리량을 독점한다
+MAX_ZONE_PNUS = 300
+
 #Zone 요청 스키마
 class ZoneRequest(BaseModel):
-    pnus: List[str]
-    parcels: Optional[List[ParcelHintDTO]] = Field(None, description="선택 필지의 면적·공시지가. 없으면 V-World 데이터 API로 조회한다")
+    pnus: List[str] = Field(..., min_length=1, max_length=MAX_ZONE_PNUS, description=f"분석할 필지 PNU 목록 (최대 {MAX_ZONE_PNUS}개)")
+    parcels: Optional[List[ParcelHintDTO]] = Field(None, max_length=MAX_ZONE_PNUS, description="선택 필지의 면적·공시지가. 없으면 V-World 데이터 API로 조회한다")
     target_ym: Optional[str] = Field(None, description="공사비 예측 기준 시점 'YYYY-MM' (착공 예상 연월). 없으면 현재 연월")
     household_count: Optional[int] = Field(None, description="구역 세대수. 조합원 수 슬라이더 범위를 만드는 데 사용")
     zoning: Optional[str] = Field(
