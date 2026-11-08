@@ -105,7 +105,7 @@ class _FakeAsyncClient:
 
 #=== Redis ===#
 class FakeRedis:
-    """redis.asyncio 클라이언트 대역 (get / set / setex 만)"""
+    """redis.asyncio 클라이언트 대역 (get / set / setex / eval(잠금 해제 스크립트) 만)"""
 
     def __init__(self) -> None:
         self.store: dict[str, str] = {}
@@ -114,9 +114,21 @@ class FakeRedis:
     async def get(self, key: str) -> str | None:
         return self.store.get(key)
 
-    async def set(self, key: str, value: str, ex: int | None = None) -> None:
+    async def set(self, key: str, value: str, ex: int | None = None, nx: bool = False) -> bool | None:
+        if nx and key in self.store:
+            return None
         self.store[key] = value
         self.ttl[key] = ex
+        return True
+
+    #request_lock 의 해제 스크립트만 흉내 낸다 : 값이 같을 때만 DEL
+    async def eval(self, script: str, numkeys: int, *args: str) -> int:
+        key, token = args[0], args[1]
+        if self.store.get(key) == token:
+            del self.store[key]
+            self.ttl.pop(key, None)
+            return 1
+        return 0
 
     async def setex(self, key: str, ttl: int, value: str) -> None:
         self.store[key] = value

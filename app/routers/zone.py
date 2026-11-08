@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from dataclasses import asdict
 from datetime import datetime
@@ -24,12 +23,17 @@ from app.services.land_service import (
 )
 from app.services.organization_service import get_active_organization
 from app.services.predict.construction_cost import predict_cost_per_pyeong
+from app.services.request_lock import per_user_lock
 from app.services.predict.sale_price import predict_sale_price_per_m2
 from app.services.trade_service import fetch_recent_trades
+from app.utils.concurrency import bounded_gather
 from app.utils.slider_builder import build_sliders
 
 #백엔드 Logger
 logger = logging.getLogger(__name__)
+
+#요청 하나가 외부 API 작업 대기열에 동시에 넣을 수 있는 작업 수 (V-World 작업자 4개 중 일부만 쓰도록)
+EXTERNAL_CALL_LIMIT = 2
 
 #부동산 계산식 API 라우터 설정
 router = APIRouter(
@@ -51,13 +55,14 @@ def housing_kind_of(main_purpose: str) -> str:
 @router.post(
     "/zone/type",
     response_model = ProjectTypeResponse,
-    summary = "사업 유형 미리 판정 (크레딧 없음)"
+    summary = "사업 유형 미리 판정 (크레딧 없음)",
+    dependencies = [Depends(per_user_lock("zone_type"))],
 )
 async def get_project_type(req: ZoneRequest, request: Request):
     if request.session.get("user_id") is None:
         raise UnauthorizedException("로그인이 필요합니다.")
     hints = {h.pnu: h for h in (req.parcels or [])}
-    owners = dict(zip(req.pnus, await asyncio.gather(*(fetch_land_possession(p) for p in req.pnus))))
+    owners = dict(zip(req.pnus, await bounded_gather((fetch_land_possession(p) for p in req.pnus), EXTERNAL_CALL_LIMIT)))
     uses = []
     for p in req.pnus:
         land_data = await fetch_land_characteristics(p)
@@ -85,7 +90,8 @@ async def get_project_type(req: ZoneRequest, request: Request):
 @router.post(
     "/zone",
     response_model = ZoneResponse,
-    summary = "구역 선택 및 요약 집계"
+    summary = "구역 선택 및 요약 집계",
+    dependencies = [Depends(per_user_lock("zone"))],
 )
 async def get_zone(req: ZoneRequest, request: Request, session: Session = Depends(get_db)):
 
@@ -117,7 +123,7 @@ async def get_zone(req: ZoneRequest, request: Request, session: Session = Depend
         uses = []
 
         #토지 소유구분
-        owners = dict(zip(req.pnus, await asyncio.gather(*(fetch_land_possession(p) for p in req.pnus))))
+        owners = dict(zip(req.pnus, await bounded_gather((fetch_land_possession(p) for p in req.pnus), EXTERNAL_CALL_LIMIT)))
 
         #필지의 원래 용도지역과 면적
         original_zonings = []
@@ -208,9 +214,10 @@ async def get_zone(req: ZoneRequest, request: Request, session: Session = Depend
         #주택 공시가격
         kinds = {u.pnu: housing_kind_of(u.main_purpose) if u.has_building else "" for u in uses}
         housing_pnus = [p for p, k in kinds.items() if k]
-        housing_prices = dict(zip(housing_pnus, await asyncio.gather(*(
-            fetch_apartment_prices(p) if kinds[p] == "공동" else fetch_house_price(p) for p in housing_pnus
-        ))))
+        housing_prices = dict(zip(housing_pnus, await bounded_gather(
+            (fetch_apartment_prices(p) if kinds[p] == "공동" else fetch_house_price(p) for p in housing_pnus),
+            EXTERNAL_CALL_LIMIT,
+        )))
         for v in valuations:
             info = housing_prices.get(v.pnu)
             if not info or info.get("fallback"):
