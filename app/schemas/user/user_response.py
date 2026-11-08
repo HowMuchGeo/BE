@@ -5,5 +5,3 @@ class UserSignUpResponse(BaseModel):
     user_id: int
     user_name: str
     email: str
-    account_type: str
-    plan_code: str | None = None

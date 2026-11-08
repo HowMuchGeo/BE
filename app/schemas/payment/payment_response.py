@@ -1,24 +1,24 @@
+from typing import Literal
 from pydantic import BaseModel
-from datetime import datetime
 
-class AmountSchema(BaseModel):
-    total: int
-    tax_free: int
-    vat: int
-    point: int
-    discount: int
-    green_deposit: int
+ProductType = Literal["credit", "plan"]
 
-#결제 응답 스키마
-class PaymentResponse(BaseModel):
-    aid: str
+#결제 상품 응답 스키마
+class ProductResponse(BaseModel):
+    product_code: str
+    product_type: ProductType
+    name: str
+    price: int
+    credit_amount: int | None = None
+    max_members: int | None = None
+    duration_months: int | None = None
+
+#결제 준비 응답 스키마
+class PaymentReadyResponse(BaseModel):
+    next_redirect_pc_url: str
     tid: str
-    cid: str
-    partner_order_id: str
-    partner_user_id: str
+    product_code: str
+    product_type: ProductType
     item_name: str
-    quantity: int
-    amount: AmountSchema
-    payment_method_type: str
-    created_at: datetime
-    approved_at: datetime
+    price: int
+    credit_amount: int | None = None
