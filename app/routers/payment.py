@@ -1,102 +1,144 @@
+import logging
 import secrets
 from datetime import datetime, timezone
-from app.exceptions.exceptions_handler import BadRequestException, ServiceUnavailableException, UnauthorizedException
-from app.schemas.payment.payment_request import PaymentRequest
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from app.database.database_connection import get_db
-from app.models.account import Organization, PaymentOrder
-from app.models.credit_purchase import CreditPurchaseOrder
-from app.services.plan_service import get_plan, add_plan_duration
-from app.services.organization_service import has_unlimited_credits
-from app.services.credit_service import fulfill_credit_purchase
 from app.clients import kakao_pay
 from app.clients.http import ExternalAPIError
 from app.config.settings import settings
-import logging
+from app.database.database_connection import get_db
+from app.exceptions.exceptions_handler import BadRequestException, ServiceUnavailableException, UnauthorizedException
+from app.models.payment import PaymentOrder
+from app.schemas.payment.payment_request import PaymentReadyRequest
+from app.schemas.payment.payment_response import PaymentReadyResponse, ProductResponse
+from app.services.payment_service import fulfill_order, get_product, list_products, validate_purchase
 
-#결제 라우터
+#결제 라우터 (크레딧 충전 · 조합 플랜 통합)
 router = APIRouter(
-    prefix="/api/v1",
+    prefix="/api/v1/payments",
     tags=["Payment Router"]
 )
 
 #백엔드 Logger
 logger = logging.getLogger(__name__)
 
-PERSONAL_CREDIT_PACK_SIZE = 5
-PERSONAL_CREDIT_PACK_PRICE = 500
-
 #콜백·리다이렉트 주소 (끝 "/" 는 settings 에서 제거된다). 필수값 검증은 서버 기동 시 app/main.py 에서 한다
 BACKEND_URL = settings.backend_url
 FRONTEND_URL = settings.frontend_url
 
-#크레딧 충전 API 엔드포인트
-@router.post("/kakao-pay/credits/ready")
-async def kakao_credit_purchase_ready(request: Request, session: Session = Depends(get_db)):
+#상품 종류별 결제 결과 프론트 페이지
+RESULT_PAGES = {
+    "credit": "/credits/payment",
+    "plan": "/payment",
+}
+
+#결제 결과 페이지로 리다이렉트
+def _redirect(product_type: str | None, status: str, **params: str | int) -> RedirectResponse:
+    path = RESULT_PAGES.get(product_type or "", RESULT_PAGES["plan"])
+    query = "&".join(f"{key}={value}" for key, value in {"status": status, **params}.items())
+    return RedirectResponse(url=f"{FRONTEND_URL}{path}?{query}", status_code=303)
+
+#주문 조회
+def _get_order(session: Session, partner_order_id: str, *, for_update: bool = False) -> PaymentOrder | None:
+    stmt = select(PaymentOrder).where(PaymentOrder.partner_order_id == partner_order_id)
+    if for_update:
+        stmt = stmt.with_for_update()
+    return session.execute(stmt).scalar_one_or_none()
+
+#결제 가능한 상품 목록 API 엔드포인트
+@router.get("/products", response_model=list[ProductResponse])
+def get_products():
+    return [
+        ProductResponse(
+            product_code=product.code,
+            product_type=product.type,
+            name=product.name,
+            price=product.price,
+            credit_amount=product.credit_amount,
+            max_members=product.plan.max_members if product.plan else None,
+            duration_months=product.plan.duration_months if product.plan else None,
+        )
+        for product in list_products()
+    ]
+
+#결제 준비 API 엔드포인트
+@router.post("/ready", response_model=PaymentReadyResponse)
+async def payment_ready(body: PaymentReadyRequest, request: Request, session: Session = Depends(get_db)):
+
+    #로그인된 사용자인지 확인
     user_id = request.session.get("user_id")
     if user_id is None:
         raise UnauthorizedException("로그인이 필요합니다.")
-
     user_id = int(user_id)
-    if has_unlimited_credits(session, user_id):
-        raise BadRequestException("조합 플랜 이용자는 개인 크레딧을 구매할 필요가 없습니다.")
 
+    #상품 조회 및 구매 가능 여부 검증
+    product = get_product(body.product_code)
+    if product is None:
+        raise BadRequestException("유효하지 않은 상품입니다.")
+    validate_purchase(session, user_id, product)
+
+    #카카오페이 결제 준비 요청
     partner_order_id = secrets.token_urlsafe(24)
-    callback_base = f"{BACKEND_URL}/api/v1/kakao-pay/credits"
+    callback_base = f"{BACKEND_URL}/api/v1/payments"
     try:
         result = await kakao_pay.ready(
             partner_order_id=partner_order_id,
             partner_user_id=str(user_id),
-            item_name="개인 크레딧 5회권",
-            total_amount=PERSONAL_CREDIT_PACK_PRICE,
+            item_name=product.name,
+            total_amount=product.price,
             approval_url=f"{callback_base}/approve?partner_order_id={partner_order_id}",
             cancel_url=f"{callback_base}/cancel?partner_order_id={partner_order_id}",
             fail_url=f"{callback_base}/fail?partner_order_id={partner_order_id}",
         )
     except ExternalAPIError as err:
-        logger.warning("KakaoPay credit ready failed: %s", err.body)
-        raise ServiceUnavailableException("크레딧 결제를 시작하지 못했습니다.")
+        logger.warning("[ Log ] : KakaoPay 결제 준비 실패 (%s) : %s", product.code, err.body)
+        raise ServiceUnavailableException("결제를 시작하지 못했습니다.")
 
     if not result.get("tid") or not result.get("next_redirect_pc_url"):
         raise ServiceUnavailableException("카카오페이 결제 준비 응답이 올바르지 않습니다.")
 
-    session.add(CreditPurchaseOrder(
+    #주문 저장 (상품 정보 스냅샷)
+    session.add(PaymentOrder(
         partner_order_id=partner_order_id,
         user_id=user_id,
+        product_type=product.type,
+        product_code=product.code,
+        item_name=product.name,
+        amount=product.price,
+        credit_amount=product.credit_amount,
         tid=result["tid"],
-        credit_amount=PERSONAL_CREDIT_PACK_SIZE,
-        price=PERSONAL_CREDIT_PACK_PRICE,
         status="ready",
     ))
     session.commit()
 
-    return {
-        "next_redirect_pc_url": result["next_redirect_pc_url"],
-        "tid": result["tid"],
-        "item_name": "개인 크레딧 5회권",
-        "price": PERSONAL_CREDIT_PACK_PRICE,
-        "credit_amount": PERSONAL_CREDIT_PACK_SIZE,
-    }
+    return PaymentReadyResponse(
+        next_redirect_pc_url=result["next_redirect_pc_url"],
+        tid=result["tid"],
+        product_code=product.code,
+        product_type=product.type,
+        item_name=product.name,
+        price=product.price,
+        credit_amount=product.credit_amount,
+    )
 
-#크레딧 충전 승인 API 엔드포인트
-@router.get("/kakao-pay/credits/approve")
-async def kakao_credit_purchase_approve(
+#결제 승인 API 엔드포인트 (카카오페이 approval_url 콜백)
+@router.get("/approve")
+async def payment_approve(
     pg_token: str = Query(...),
     partner_order_id: str = Query(...),
     session: Session = Depends(get_db),
 ):
-    order = session.execute(
-        select(CreditPurchaseOrder)
-        .where(CreditPurchaseOrder.partner_order_id == partner_order_id)
-        .with_for_update()
-    ).scalar_one_or_none()
-
+    #주문 조회 (중복 승인 방지를 위해 행 잠금)
+    order = _get_order(session, partner_order_id, for_update=True)
+    if order and order.status == "approved":
+        #새로고침 등으로 콜백이 다시 들어온 경우 결과 페이지만 다시 보여준다
+        return _redirect(order.product_type, "success")
     if not order or not order.tid or order.status != "ready":
-        raise BadRequestException("유효한 크레딧 결제 주문을 찾을 수 없습니다.")
+        return _redirect(order.product_type if order else None, "fail")
 
+    #카카오페이 승인 요청
     try:
         approval = await kakao_pay.approve(
             tid=order.tid,
@@ -105,195 +147,47 @@ async def kakao_credit_purchase_approve(
             pg_token=pg_token,
         )
     except ExternalAPIError as err:
-        logger.warning("[ Log ] : KakaoPay 크레딧 승인 실패 : %s", err.body)
-        raise ServiceUnavailableException("카카오페이 결제가 승인되지 않았습니다.")
+        logger.warning("[ Log ] : KakaoPay 결제 승인 실패 (%s) : %s", order.partner_order_id, err.body)
+        order.status = "failed"
+        session.commit()
+        return _redirect(order.product_type, "fail")
 
+    #승인 응답이 주문 내용과 일치하는지 검증
     paid_total = (approval.get("amount") or {}).get("total")
     if (
         approval.get("tid") != order.tid
         or approval.get("partner_order_id") != order.partner_order_id
-        or int(paid_total or 0) != order.price
+        or int(paid_total or 0) != order.amount
     ):
-        logger.error("[ Log ] : KakaoPay 크레딧 승인 실패 : %s", order.partner_order_id)
+        logger.error("[ Log ] : KakaoPay 승인 정보 불일치 : %s", order.partner_order_id)
         raise ServiceUnavailableException("결제 승인 정보가 주문 내용과 일치하지 않습니다.")
 
-    await fulfill_credit_purchase(order.user_id, order.partner_order_id, order.credit_amount)
+    #상품 지급 (크레딧 충전 또는 조합 생성·연장) 후 주문 확정
+    await fulfill_order(session, order)
     order.status = "approved"
+    order.approved_at = datetime.now(timezone.utc)
     session.commit()
 
-    return RedirectResponse(
-        url=f"{FRONTEND_URL}/credits/payment?status=success&credits={order.credit_amount}",
-        status_code=303,
-    )
+    if order.product_type == "credit":
+        return _redirect("credit", "success", credits=order.credit_amount)
+    return _redirect("plan", "success")
 
-#크레딧 충전 취소 API 엔드포인트
-@router.get("/kakao-pay/credits/cancel")
-def kakao_credit_purchase_cancel(partner_order_id: str = Query(...), session: Session = Depends(get_db)):
-    _update_credit_purchase_status(session, partner_order_id, "cancelled")
-    return RedirectResponse(url=f"{FRONTEND_URL}/credits/payment?status=cancel", status_code=303)
+#결제 취소 API 엔드포인트
+@router.get("/cancel")
+def payment_cancel(partner_order_id: str = Query(...), session: Session = Depends(get_db)):
+    order = _close_ready_order(session, partner_order_id, "cancelled")
+    return _redirect(order.product_type if order else None, "cancel")
 
-#크레딧 충전 실패 API 엔드포인트
-@router.get("/kakao-pay/credits/fail")
-def kakao_credit_purchase_fail(partner_order_id: str = Query(...), session: Session = Depends(get_db)):
-    _update_credit_purchase_status(session, partner_order_id, "failed")
-    return RedirectResponse(url=f"{FRONTEND_URL}/credits/payment?status=fail", status_code=303)
+#결제 실패 API 엔드포인트
+@router.get("/fail")
+def payment_fail(partner_order_id: str = Query(...), session: Session = Depends(get_db)):
+    order = _close_ready_order(session, partner_order_id, "failed")
+    return _redirect(order.product_type if order else None, "fail")
 
-def _update_credit_purchase_status(session: Session, partner_order_id: str, new_status: str) -> None:
-    order = session.execute(
-        select(CreditPurchaseOrder).where(
-            CreditPurchaseOrder.partner_order_id == partner_order_id
-        )
-    ).scalar_one_or_none()
+#대기(ready) 중인 주문을 취소·실패 상태로 종료
+def _close_ready_order(session: Session, partner_order_id: str, new_status: str) -> PaymentOrder | None:
+    order = _get_order(session, partner_order_id)
     if order and order.status == "ready":
         order.status = new_status
         session.commit()
-
-#Plan 결제 API 엔드포인트
-@router.post("/kakao-pay/plans/ready")
-async def kakao_pay_ready(body: PaymentRequest, request: Request, session: Session = Depends(get_db)):
-
-    #로그인된 사용자인지 확인
-    user_id = request.session.get("user_id")
-    if user_id is None:
-        raise UnauthorizedException("로그인이 필요합니다.")
-
-    #사용자가 조합장인 조합 조회
-    organization = session.execute(
-        select(Organization).where(
-            Organization.leader_user_id == int(user_id)
-        )
-    ).scalar_one_or_none()
-
-    #사용자가 조합장인 조직이 없거나 결제 불가상태라면 Bad Request Exception 발생
-    if not organization:
-        raise BadRequestException("조합장 플랜 결제는 조합장 계정만 할 수 있습니다.")
-    if organization.status not in {"pending_payment", "active"}:
-        raise BadRequestException("현재 결제할 수 없는 조합 상태입니다.")
-
-    #조합의 플랜 코드 반환
-    plan = get_plan(organization.plan_code)
-
-    #플랜코드가 없다면 Bad Request Exception 발생
-    if not plan:
-        raise BadRequestException("유효하지 않은 조합 플랜입니다.")
-
-    #플랜에 대하여 결제 요청 준비
-    logger.warning("[ Log ] : 결제 준비 API 시도중.")
-    partner_order_id = secrets.token_urlsafe(24)
-    callback_base = f"{BACKEND_URL}/api/v1/kakao-pay/plans"
-
-    #비동기 결제 요청. 실패시 Service Unavailable Exception 발생
-    try:
-        result = await kakao_pay.ready(
-            partner_order_id=partner_order_id,
-            partner_user_id=str(user_id),
-            item_name=plan.name,
-            total_amount=plan.price,
-            approval_url=f"{callback_base}/approve?partner_order_id={partner_order_id}",
-            cancel_url=f"{callback_base}/cancel?partner_order_id={partner_order_id}",
-            fail_url=f"{callback_base}/fail?partner_order_id={partner_order_id}",
-        )
-    except ExternalAPIError as err:
-        logger.warning("[ Log ] : 결제 준비 API 호출 실패.")
-        raise ServiceUnavailableException(err.body)
-
-    #반환 결과 PaymentOrder DB 에 저장 및 반환
-
-    session.add(PaymentOrder(
-        partner_order_id=partner_order_id,
-        user_id=int(user_id),
-        organization_id=organization.organization_id,
-        plan_code=plan.code,
-        tid=result["tid"],
-        status="ready",
-    ))
-    session.commit()
-    logger.warning("[ Log ] : 결제 준비 API 성공.")
-    return {"next_redirect_pc_url": result["next_redirect_pc_url"], "tid": result["tid"], "item_name": plan.name, "price": plan.price}
-
-#Plan 결제 승인 API 엔드포인트
-@router.get(
-    "/kakao-pay/plans/approve"
-)
-async def kakao_pay_approve(
-    pg_token: str = Query(...),
-    partner_order_id: str = Query(...),
-    session: Session = Depends(get_db),
-):
-    #Partner Order ID 로 정보 조회
-    logger.warning("[ Log ] : 결제 승인 API 시도중.")
-    order = session.execute(
-        select(PaymentOrder).where(
-            PaymentOrder.partner_order_id == partner_order_id
-        )
-    ).scalar_one_or_none()
-
-    #정보다 없다면 Service Unavailable Exception 발생
-    if not order or not order.tid or order.status != "ready":
-        logger.warning("[ Log ] : 결제 승인 API 실패.")
-        raise ServiceUnavailableException("결제 준비 정보(tid)를 찾을 수 없습니다.")
-
-    #정보의 조직 id 로 조직 조회
-    organization = session.get(Organization, order.organization_id)
-
-    #플랜 코드 조회
-    plan = get_plan(order.plan_code)
-
-    #조직 정보나 플랜 코드가 없다면 Service Unavailable Exception 발생
-    if not organization or not plan:
-        raise ServiceUnavailableException("결제할 조합 플랜 정보를 찾을 수 없습니다.")
-
-    #비동기 승인 요청. 실패시 Service Unavailable Exception 발생
-    try:
-        await kakao_pay.approve(
-            tid=order.tid,
-            partner_order_id=partner_order_id,
-            partner_user_id=str(order.user_id),
-            pg_token=pg_token,
-        )
-    except ExternalAPIError as err:
-        logger.warning("[ Log ] : 결제 승인 API 실패.")
-        raise ServiceUnavailableException(err.body)
-
-    #결제 최종 승인시 정보 저장 및 페이지 Redirect
-    now = datetime.now(timezone.utc)
-    start = organization.paid_until if organization.paid_until and organization.paid_until > now else now
-    organization.paid_until = add_plan_duration(start, plan.duration_months)
-    organization.status = "active"
-    order.status = "approved"
-    session.commit()
-    logger.warning("[ Log ] : 결제 승인 API 성공.")
-    return RedirectResponse(url=f"{FRONTEND_URL}/payment?status=success", status_code=303)
-
-#Plan 결제 취소 API 엔드포인트
-@router.get("/kakao-pay/plans/cancel")
-def kakao_pay_cancel(partner_order_id: str | None = Query(default=None), session: Session = Depends(get_db)):
-    logger.warning("[ Log ] : 결제가 취소되었습니다.")
-    _update_payment_status(session, partner_order_id, "cancelled")
-    return RedirectResponse(url=f"{FRONTEND_URL}/payment?status=cancel", status_code=303)
-
-#Plan 결제 실패 API 엔드포인트
-@router.get("/kakao-pay/plans/fail")
-def kakao_pay_fail(partner_order_id: str | None = Query(default=None), session: Session = Depends(get_db)):
-    logger.warning("[ Log ] : 결제가 실패했습니다.")
-    _update_payment_status(session, partner_order_id, "failed")
-    return RedirectResponse(url=f"{FRONTEND_URL}/payment?status=fail", status_code=303)
-
-#Plan 결제 정보 업데이트 함수
-def _update_payment_status(session: Session, partner_order_id: str | None, new_status: str) -> None:
-
-    #Partner Order ID 가 존재하지 않는다면 반환
-    if not partner_order_id:
-        return
-    
-    #PaymentOrder 데이터베이스에서 해당하는 주문정보 조회
-    order = session.execute(
-        select(PaymentOrder).where(
-            PaymentOrder.partner_order_id == partner_order_id
-        )
-    ).scalar_one_or_none()
-
-    #상태 전환 및 저장
-    if order and order.status == "ready":
-        order.status = new_status
-        session.commit()
+    return order
