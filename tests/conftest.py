@@ -10,7 +10,7 @@ load_dotenv()
 os.environ.setdefault("POSTGRESQL_DATABASE_URL", "postgresql://test:test@localhost:5432/test")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
-from tests.fakes import FakeRedis  # noqa: E402
+from tests.fakes import BrokenRedis, FakeRedis  # noqa: E402
 
 #테스트용 외부 API 설정값. 실제 .env 값과 상관없이 테스트마다 고정한다
 TEST_ENV = {
@@ -69,11 +69,21 @@ def sleep_calls(monkeypatch: pytest.MonkeyPatch) -> list[float]:
 
 @pytest.fixture
 def fake_redis(monkeypatch: pytest.MonkeyPatch) -> FakeRedis:
-    """zone_service 의 Redis 를 메모리 Fake 로 교체"""
-    import app.services.zone_service as zone_service
+    """공통 Redis 저장소(app.cache.store.redis_store)를 메모리 Fake 로 교체 (모든 서비스에 함께 적용)"""
+    from app.cache.store import redis_store
 
     redis = FakeRedis()
-    monkeypatch.setattr(zone_service, "redis_client", redis)
+    monkeypatch.setattr(redis_store, "_client", redis)
+    return redis
+
+
+@pytest.fixture
+def broken_redis(monkeypatch: pytest.MonkeyPatch) -> BrokenRedis:
+    """모든 Redis 명령이 실패하는 장애 상황"""
+    from app.cache.store import redis_store
+
+    redis = BrokenRedis()
+    monkeypatch.setattr(redis_store, "_client", redis)
     return redis
 
 

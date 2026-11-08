@@ -54,13 +54,13 @@ class FakeRedis:
 #Fixture : 의존성 교체
 @pytest.fixture
 def patch_deps(monkeypatch: pytest.MonkeyPatch):
-    """health 모듈의 engine / redis_client 를 Fake 로 교체하는 헬퍼를 반환"""
+    """health 모듈의 engine / Redis 저장소 클라이언트를 Fake 로 교체하는 헬퍼를 반환"""
 
     def _patch(db_error: Exception | None = None, redis_error: Exception | None = None):
         fake_engine = FakeEngine(error=db_error)
         fake_redis = FakeRedis(error=redis_error)
         monkeypatch.setattr(health_module, "engine", fake_engine)
-        monkeypatch.setattr(health_module, "redis_client", fake_redis)
+        monkeypatch.setattr(health_module.redis_store, "_client", fake_redis)
         return fake_engine, fake_redis
 
     return _patch
