@@ -1,263 +1,95 @@
-from app.cache.redis import redis_client
-from app.services.predict.sale_price import Trade
-from dataclasses import is_dataclass, asdict
-from typing import Optional
+#외부 API 조회 결과 캐시 (Redis 접근 · 직렬화 · 실패 처리는 app.cache.store 가 담당)
+from dataclasses import asdict, is_dataclass
+from typing import Any, Optional
 import logging
-import json
+
+from app.cache import keys
+from app.cache.store import redis_store
+from app.services.predict.sale_price import Trade
 
 #백엔드 Logger
 logger = logging.getLogger(__name__)
 
-#Redis 를 통한 Trade 캐시 불러오기
+#=== 실거래 (Trade) ===#
 async def get_cached_trades(lawd_cd: str, target_ym: str) -> Optional[list]:
+    raw_list = await redis_store.get_cache(keys.TRADES, lawd_cd, target_ym)
+    if raw_list is None:
+        return None
 
-    #trades:lawd_cd:target_ym 형태의 키를 사용
-    cache_key = f"trades:{lawd_cd}:{target_ym}"
-
+    #Trade 필드가 바뀐 뒤 남아있는 예전 캐시는 미스로 처리
     try:
-        #Redis 에서 해당 키로 저장된 값을 가져오기
-        data = await redis_client.get(cache_key)
-
-        #Redis 에서 꺼내온 값이 있다면
-        if data:
-
-            #Redis에서 꺼내온 JSON 문자열을 파이썬 객체로 변환 및 성공 로깅
-            raw_list = json.loads(data)
-            logger.warning(f"[ Log ] : Redis 캐시 불러오기 성공 : Trade : {cache_key}")
-
-            #꺼내온 객체가 dict이면 Trade 객체로 변환, 아니면 그대로 반환
-            return [Trade(**item) if isinstance(item, dict) else item for item in raw_list]
-        
-        #Redis에 해당 키가 없으면 MISS 로깅 후 None 반환
-        logger.warning(f"[ Log ] : Redis 캐시 존재하지 않음 : Trade : {cache_key}")
+        return [Trade(**item) if isinstance(item, dict) else item for item in raw_list]
+    except TypeError as err:
+        logger.warning(f"[ Log ] : Redis 캐시 형식 불일치 : Trade : {lawd_cd}:{target_ym} : {err}")
         return None
 
-    #Redis에서 꺼내온 값이 JSON으로 디코딩되지 않거나 다른 오류 발생 시
-    except Exception as err:
-
-        #경고 로깅 후 None 반환
-        logger.warning(f"[ Log ] : Redis 캐시 불러오기 실패 : Redis 읽기/디코딩 오류 : Trade : {cache_key}: {str(err)}")
-        return None
-
-#Redis 를 통한 Trade 캐시 저장
 async def set_cached_trades(lawd_cd: str, target_ym: str, trades: list) -> None:
+    await redis_store.set_cache(keys.TRADES, [_to_dict(trade) for trade in trades], lawd_cd, target_ym)
 
-    #trades 리스트가 비어있으면 저장하지 않고 바로 반환
-    if not trades:
-        return
+#캐시 저장용 dict 변환 (Pydantic v2 / v1, dataclass, dict, 일반 객체 순)
+def _to_dict(obj: Any) -> Any:
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if hasattr(obj, "dict"):
+        return obj.dict()
+    if is_dataclass(obj):
+        return asdict(obj)
+    if isinstance(obj, dict):
+        return obj
+    if hasattr(obj, "__dict__"):
+        return obj.__dict__
+    return str(obj)
 
-    #trades:lawd_cd:target_ym 형태의 키를 사용
-    cache_key = f"trades:{lawd_cd}:{target_ym}"
-
-    try:
-        #trades_dict 리스트를 만들어 각 Trade 객체를 dict로 변환
-        trades_dict = []
-        for trade in trades:
-
-            #Pydantic v2 모델인 경우 model_dump() 메서드를 사용하여 dict로 변환
-            if hasattr(trade, "model_dump"):
-                trades_dict.append(trade.model_dump())
-            
-            #Pydantic v1 모델인 경우 dict() 메서드를 사용하여 dict로 변환
-            elif hasattr(trade, "dict"):
-                trades_dict.append(trade.dict())
-            
-            #Dataclass 인 경우 asdict() 함수를 사용하여 dict로 변환
-            elif is_dataclass(trade):
-                trades_dict.append(asdict(trade))
-            
-            #이미 dict인 경우 그대로 추가
-            elif isinstance(trade, dict):
-                trades_dict.append(trade)
-
-            #일반 Custom Class 인 경우 __dict__ 속성을 사용하여 dict로 변환
-            elif hasattr(trade, "__dict__"):
-                trades_dict.append(trade.__dict__)
-            
-            #그 외의 경우, 직렬화할 수 없는 객체이므로 str()로 변환하여 저장
-            else:
-                trades_dict.append(str(trade))
-
-        #trades_dict를 JSON 문자열로 직렬화하고 Redis에 저장, TTL은 86400초 (=1일)
-        serialized_data = json.dumps(trades_dict, ensure_ascii=False)
-        await redis_client.set(cache_key, serialized_data, ex=86400)
-
-        #Redis에 저장 성공 시 로깅
-        logger.warning(f"[ Log ] : Redis 캐시 저장 성공 : Trade : {cache_key} : (TTL 86400s)")
-
-    #Redis 저장 중 오류 발생 시 경고 로깅
-    except Exception as err:
-        logger.warning(f"[ Log ] : Redis 캐시 저장 실패 : Redis 쓰기 오류 : Trade : {cache_key} : {str(err)}")
-
-#Redis 를 통한 Land 캐시 불러오기
+#=== 토지 (Land) ===#
 async def get_cached_land(pnu: str) -> Optional[dict]:
+    return await redis_store.get_cache(keys.LAND, pnu)
 
-    #Land 객체를 Redis에서 불러오기 위해 land:{pnu} 형태의 키를 사용
-    cache_key = f"land:{pnu}"
+async def set_cached_land(pnu: str, data: dict) -> None:
+    await redis_store.set_cache(keys.LAND, data, pnu)
 
-    try:
-        #Redis에서 해당 키로 저장된 값을 가져오기
-        val = await redis_client.get(cache_key)
-
-        #Redis에서 꺼내온 값이 있다면 JSON 문자열을 파이썬 객체로 변환 및 성공 로깅
-        if val:
-            logger.warning(f"[ Log ] : Redis 캐시 불러오기 성공 : Land : {cache_key}")
-            return json.loads(val)
-
-        #Redis에 해당 키가 없으면 MISS 로깅 후 None 반환
-        else:
-            logger.warning(f"[ Log ] : Redis 캐시 존재하지 않음 : Land : {cache_key}")
-    
-    #Redis에서 꺼내온 값이 JSON으로 디코딩되지 않거나 다른 오류 발생 시 경고 로깅
-    except Exception as err:
-        logger.warning(f"[ Log ] : Redis 캐시 불러오기 실패 : Redis 읽기/디코딩 오류 : Land : {cache_key} : {err}")
-    
-    #Redis에서 값을 가져오지 못했거나 오류가 발생한 경우 None 반환
-    return None
-
-#Redis 를 통한 Land 캐시 저장하기
-async def set_cached_land(pnu: str, data: dict):
-
-    #Land 객체가 비어있으면 저장하지 않고 바로 반환
-    if not data:
-        return
-
-    #Land 객체를 Redis에 저장하기 위해 land:{pnu} 형태의 키를 사용
-    cache_key = f"land:{pnu}"
-
-    try:
-        #Land 객체를 JSON 문자열로 직렬화하고 Redis에 저장, TTL은 604800초 (=7일)
-        serialized_data = json.dumps(data, ensure_ascii=False, default=str)
-        await redis_client.setex(cache_key, 604800, serialized_data)
-
-        #Redis에 저장 성공 시 로깅
-        logger.warning(f"[ Log ] : Redis 캐시 저장 성공 : Land : {cache_key} : (TTL 604800s)")
-
-    #Redis 저장 중 오류 발생 시 경고 로깅
-    except Exception as err:
-        logger.warning(f"[ Log ] : Redis 캐시 저장 실패 : Redis 쓰기 오류 : Land : {cache_key} : {err}")
-
-#Redis 를 통한 건축물대장 캐시 불러오기
+#=== 건축물대장 ===#
 async def get_cached_building(pnu: str) -> Optional[dict]:
-    cache_key = f"bld3:{pnu}"
+    return await redis_store.get_cache(keys.BUILDING, pnu)
 
-    try:
-        val = await redis_client.get(cache_key)
-        if val:
-            logger.warning(f"[ Log ] : Redis 캐시 불러오기 성공 : Building : {cache_key}")
-            return json.loads(val)
-        logger.warning(f"[ Log ] : Redis 캐시 존재하지 않음 : Building : {cache_key}")
-
-    except Exception as err:
-        logger.warning(f"[ Log ] : Redis 캐시 불러오기 실패 : Building : {cache_key} : {err}")
-
-    return None
-
-#Redis 를 통한 건축물대장 캐시 저장
 async def set_cached_building(pnu: str, data: dict) -> None:
-    if not data:
-        return
+    await redis_store.set_cache(keys.BUILDING, data, pnu)
 
-    cache_key = f"bld3:{pnu}"
-
-    try:
-        serialized_data = json.dumps(data, ensure_ascii=False, default=str)
-        await redis_client.setex(cache_key, 2592000, serialized_data)
-        logger.warning(f"[ Log ] : Redis 캐시 저장 성공 : Building : {cache_key} : (TTL 2592000s)")
-
-    except Exception as err:
-        logger.warning(f"[ Log ] : Redis 캐시 저장 실패 : Building : {cache_key} : {err}")
-
-#Redis 를 통한 전유면적 합계 캐시
+#=== 전유면적 합계 ===#
 async def get_cached_exclusive_total(pnu: str) -> Optional[float]:
-    cache_key = f"exc:{pnu}"
-
+    value = await redis_store.get_cache(keys.EXCLUSIVE_TOTAL, pnu)
+    if value is None:
+        return None
     try:
-        val = await redis_client.get(cache_key)
-        if val is not None:
-            logger.warning(f"[ Log ] : Redis 캐시 불러오기 성공 : Exclusive : {cache_key}")
-            return float(val)
-        logger.warning(f"[ Log ] : Redis 캐시 존재하지 않음 : Exclusive : {cache_key}")
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
-    except Exception as err:
-        logger.warning(f"[ Log ] : Redis 캐시 불러오기 실패 : Exclusive : {cache_key} : {err}")
-
-    return None
-
+#0 은 "다 못 받았다" 는 뜻이라 캐시하지 않음 (set_cache 가 빈 값을 건너뜀)
 async def set_cached_exclusive_total(pnu: str, total: float) -> None:
-    #0 은 "다 못 받았다" 는 뜻이라 캐시하지 않음
-    if not total:
-        return
+    await redis_store.set_cache(keys.EXCLUSIVE_TOTAL, total, pnu)
 
-    cache_key = f"exc:{pnu}"
-
-    try:
-        await redis_client.setex(cache_key, 2592000, str(total))
-        logger.warning(f"[ Log ] : Redis 캐시 저장 성공 : Exclusive : {cache_key} : (TTL 2592000s)")
-
-    except Exception as err:
-        logger.warning(f"[ Log ] : Redis 캐시 저장 실패 : Exclusive : {cache_key} : {err}")
-
-#Redis 를 통한 토지소유정보 캐시
+#=== 토지소유정보 ===#
 async def get_cached_possession(pnu: str) -> Optional[dict]:
-    cache_key = f"own3:{pnu}"
-
-    try:
-        val = await redis_client.get(cache_key)
-        if val:
-            return json.loads(val)
-
-    except Exception as err:
-        logger.warning(f"[ Log ] : Redis 캐시 불러오기 실패 : Possession : {cache_key} : {err}")
-
-    return None
+    return await redis_store.get_cache(keys.POSSESSION, pnu)
 
 async def set_cached_possession(pnu: str, data: dict) -> None:
-    if not data:
-        return
+    await redis_store.set_cache(keys.POSSESSION, data, pnu)
 
-    cache_key = f"own3:{pnu}"
-
-    try:
-        await redis_client.setex(cache_key, 2592000, json.dumps(data, ensure_ascii=False))
-
-    except Exception as err:
-        logger.warning(f"[ Log ] : Redis 캐시 저장 실패 : Possession : {cache_key} : {err}")
-
-#Redis 를 통한 재건축용 캐시
-async def _get_json(cache_key: str, label: str) -> Optional[dict]:
-    try:
-        val = await redis_client.get(cache_key)
-        if val:
-            return json.loads(val)
-    except Exception as err:
-        logger.warning(f"[ Log ] : Redis 캐시 불러오기 실패 : {label} : {cache_key} : {err}")
-    return None
-
-async def _set_json(cache_key: str, label: str, data: dict) -> None:
-    if not data:
-        return
-    try:
-        await redis_client.setex(cache_key, 2592000, json.dumps(data, ensure_ascii=False))
-    except Exception as err:
-        logger.warning(f"[ Log ] : Redis 캐시 저장 실패 : {label} : {cache_key} : {err}")
-
-#aptc2 : 상가(비주거 동) 호수·연면적을 더한 판. 예전 aptc: 값에는 없다
+#=== 재건축 (공동주택 단지 · 공시가격) ===#
 async def get_cached_apartment(pnu: str) -> Optional[dict]:
-    return await _get_json(f"aptc2:{pnu}", "Apartment")
+    return await redis_store.get_cache(keys.APARTMENT, pnu)
 
 async def set_cached_apartment(pnu: str, data: dict) -> None:
-    await _set_json(f"aptc2:{pnu}", "Apartment", data)
+    await redis_store.set_cache(keys.APARTMENT, data, pnu)
 
-#hsp : 개별주택가격 (단독·다가구) — 재개발 종전자산
 async def get_cached_house_price(pnu: str) -> Optional[dict]:
-    return await _get_json(f"hsp:{pnu}", "HousePrice")
+    return await redis_store.get_cache(keys.HOUSE_PRICE, pnu)
 
 async def set_cached_house_price(pnu: str, data: dict) -> None:
-    await _set_json(f"hsp:{pnu}", "HousePrice", data)
+    await redis_store.set_cache(keys.HOUSE_PRICE, data, pnu)
 
 async def get_cached_apartment_prices(pnu: str) -> Optional[dict]:
-    return await _get_json(f"aptp:{pnu}", "ApartmentPrice")
+    return await redis_store.get_cache(keys.APARTMENT_PRICES, pnu)
 
 async def set_cached_apartment_prices(pnu: str, data: dict) -> None:
-    await _set_json(f"aptp:{pnu}", "ApartmentPrice", data)
+    await redis_store.set_cache(keys.APARTMENT_PRICES, data, pnu)

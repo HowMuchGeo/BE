@@ -13,6 +13,7 @@ if not REDIS_URL:
     raise ValueError("REDIS_URL 환경 변수가 설정되지 않았습니다.")
 
 #Redis 비동기 클라이언트 설정
+#서비스 코드에서 직접 사용하지 말 것. Redis 접근은 app.cache.store.redis_store 를 통해서만 한다
 redis_client = aioredis.from_url(
     REDIS_URL,
     encoding="utf-8",

@@ -105,11 +105,13 @@ class _FakeAsyncClient:
 
 #=== Redis ===#
 class FakeRedis:
-    """redis.asyncio 클라이언트 대역 (get / set / setex / eval(잠금 해제 스크립트) 만)"""
+    """redis.asyncio 클라이언트 대역 (get / set / setex / delete / ping / eval(잠금 해제 스크립트) 만)"""
 
     def __init__(self) -> None:
         self.store: dict[str, str] = {}
         self.ttl: dict[str, int | None] = {}
+        self.eval_calls: list[tuple[str, int, tuple]] = []
+        self.ping_calls = 0
 
     async def get(self, key: str) -> str | None:
         return self.store.get(key)
@@ -117,12 +119,29 @@ class FakeRedis:
     async def set(self, key: str, value: str, ex: int | None = None, nx: bool = False) -> bool | None:
         if nx and key in self.store:
             return None
-        self.store[key] = value
+        self.store[key] = str(value)
         self.ttl[key] = ex
+        return True
+
+    async def setex(self, key: str, ttl: int, value: str) -> None:
+        self.store[key] = value
+        self.ttl[key] = ttl
+
+    async def delete(self, *keys: str) -> int:
+        removed = 0
+        for key in keys:
+            if self.store.pop(key, None) is not None:
+                self.ttl.pop(key, None)
+                removed += 1
+        return removed
+
+    async def ping(self) -> bool:
+        self.ping_calls += 1
         return True
 
     #request_lock 의 해제 스크립트만 흉내 낸다 : 값이 같을 때만 DEL
     async def eval(self, script: str, numkeys: int, *args: str) -> int:
+        self.eval_calls.append((script, numkeys, args))
         key, token = args[0], args[1]
         if self.store.get(key) == token:
             del self.store[key]
@@ -130,6 +149,34 @@ class FakeRedis:
             return 1
         return 0
 
-    async def setex(self, key: str, ttl: int, value: str) -> None:
-        self.store[key] = value
-        self.ttl[key] = ttl
+
+class BrokenRedis:
+    """모든 명령이 실패하는 Redis 대역 (장애 상황)"""
+
+    def __init__(self, error: Exception | None = None) -> None:
+        from redis.exceptions import ConnectionError as RedisConnectionError
+
+        self.error = error or RedisConnectionError("redis down")
+        self.calls = 0
+
+    def _fail(self, *args, **kwargs):
+        self.calls += 1
+        raise self.error
+
+    async def get(self, *args, **kwargs):
+        self._fail()
+
+    async def set(self, *args, **kwargs):
+        self._fail()
+
+    async def setex(self, *args, **kwargs):
+        self._fail()
+
+    async def delete(self, *args, **kwargs):
+        self._fail()
+
+    async def eval(self, *args, **kwargs):
+        self._fail()
+
+    async def ping(self, *args, **kwargs):
+        self._fail()

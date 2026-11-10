@@ -1,11 +1,9 @@
 import asyncio
 
 import pytest
-from redis.exceptions import RedisError
-
 import app.services.request_lock as request_lock
 from app.exceptions.exceptions_handler import TooManyRequestsException, UnauthorizedException
-from tests.fakes import FakeRedis
+from tests.fakes import BrokenRedis, FakeRedis
 
 
 class _FakeRequest:
@@ -13,19 +11,9 @@ class _FakeRequest:
         self.session = {"user_id": user_id} if user_id is not None else {}
 
 
-class _BrokenRedis:
-    async def set(self, *args, **kwargs):
-        raise RedisError("down")
-
-    async def eval(self, *args, **kwargs):
-        raise RedisError("down")
-
-
 @pytest.fixture
-def lock_redis(monkeypatch: pytest.MonkeyPatch) -> FakeRedis:
-    redis = FakeRedis()
-    monkeypatch.setattr(request_lock, "redis_client", redis)
-    return redis
+def lock_redis(fake_redis: FakeRedis) -> FakeRedis:
+    return fake_redis
 
 
 def test_acquire_and_release(lock_redis: FakeRedis):
@@ -69,13 +57,12 @@ def test_release_does_not_delete_someone_elses_lock(lock_redis: FakeRedis):
     asyncio.run(scenario())
 
 
-def test_redis_failure_lets_request_through(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(request_lock, "redis_client", _BrokenRedis())
-
+def test_redis_failure_lets_request_through(broken_redis: BrokenRedis):
     async def scenario():
         token = await request_lock.acquire_user_lock("zone", 1)
         assert token is None
         await request_lock.release_user_lock("zone", 1, token)
+        assert broken_redis.calls == 1
 
     asyncio.run(scenario())
 

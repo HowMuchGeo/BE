@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 from app.database.database_connection import engine
-from app.cache.redis import redis_client
+from app.cache.store import RedisUnavailableError, redis_store
 
 #서버 상태 조회 라우터
 router = APIRouter(
@@ -40,12 +40,12 @@ async def get_readiness():
     except Exception as e:
         checks["postgresql"] = f"error: {type(e).__name__}"
 
-    #Redis 상태 확인
+    #Redis 상태 확인 (응답에는 원인 예외의 타입명만 노출)
     try:
-        await redis_client.ping()
+        await redis_store.ping()
         checks["redis"] = "ok"
-    except Exception as e:
-        checks["redis"] = f"error: {type(e).__name__}"
+    except RedisUnavailableError as e:
+        checks["redis"] = f"error: {type(e.__cause__ or e).__name__}"
 
     #상태 총 검사
     healthy = all(v == "ok" for v in checks.values())
