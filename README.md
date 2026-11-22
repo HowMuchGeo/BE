@@ -120,3 +120,7 @@ erDiagram
 # 5. BE System Architecture
 
 # 6. BE Directory Architecture
+
+## 데이터 출처
+
+- 행정동 경계 (`app/data/admin_dong.json.gz`) : 통계청 SGIS 행정구역 경계 (공공누리 제1유형), [vuski/admdongkor](https://github.com/vuski/admdongkor) (CC BY 4.0) — ver20261001 을 `maintenance/build_admin_dong.py` 로 경량화

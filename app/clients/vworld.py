@@ -72,8 +72,8 @@ def get_indvd_housing_prices(pnu: str, year: int, rows: int = 20) -> list[dict]:
     return _fields(_first_root(data))
 
 #=== Data (지적도) ===#
-#연속지적도 GetFeature (box_str = "BOX(경도,위도,경도,위도)")
-async def get_cadastral_features(box_str: str, size: int = 1000) -> dict:
+#연속지적도 GetFeature (geom_filter = "BOX(경도,위도,경도,위도)", page / size : 페이지 번호 · 크기(최대 1000))
+async def get_cadastral_features(geom_filter: str, *, page: int = 1, size: int = 1000) -> dict:
     params = {
         "service": "data",
         "request": "GetFeature",
@@ -81,9 +81,10 @@ async def get_cadastral_features(box_str: str, size: int = 1000) -> dict:
         "key": settings.vworld_api_key,
         "domain": settings.vworld_domain,
         "format": "json",
-        "geomFilter": box_str,
+        "geomFilter": geom_filter,
         "epsg": "4326",
         "size": size,
+        "page": page,
     }
 
     #쿼리 인코딩은 기존 방식(urlencode)을 그대로 쓴다 — BOX(…) 의 괄호·쉼표 인코딩이 바뀌지 않도록
