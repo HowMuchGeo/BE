@@ -2,6 +2,7 @@ from math import isfinite
 from pydantic import BaseModel, Field, field_validator, model_validator
 from app.schemas.realestate.realestate_request import ParcelHintDTO, UnitMixEntryDTO
 from app.config.engine_defaults import COMPLETION_GAP_MIN, PROJECT_PERIOD_TRACK
+from app.config.recon_defaults import RECON_PROJECT_PERIOD_TRACK
 from app.services.engine.rental_cost import FLOOR_BANDS
 
 #조직 Map View 스키마
@@ -75,7 +76,9 @@ class OrganizationScenarioRequest(BaseModel):
                     raise ValueError(f"{key} 슬라이더 값이 올바르지 않습니다.")
             elif key == "project_period_years":
                 #손잡이 두 개 [분담금 고시일, 최종 인가] (년). 트랙 안 · 최소 간격 이상
-                track_min, track_max = PROJECT_PERIOD_TRACK
+                #시나리오에 사업 유형이 없어 재개발(10~30) · 재건축(3~20) 트랙을 합친 범위로 본다
+                track_min = min(PROJECT_PERIOD_TRACK[0], RECON_PROJECT_PERIOD_TRACK[0])
+                track_max = max(PROJECT_PERIOD_TRACK[1], RECON_PROJECT_PERIOD_TRACK[1])
                 if (
                     not isinstance(value, list) or len(value) != 2
                     or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not isfinite(v) for v in value)
