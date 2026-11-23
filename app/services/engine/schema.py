@@ -190,6 +190,8 @@ class ProjectResult:
     total_prior_asset : float
     proportional_rate : float
     warnings : list[str] = field(default_factory=list)
+    #평형에 나눠 줄 수 있는 분양 공급면적 (주택 공급면적 − 임대 − 기부채납 공공임대). 평형 구성 카드의 "사용 면적" 분모
+    sale_supply_m2 : float = 0.0
     
 #조합원 개인 계산 결과
 @dataclass
