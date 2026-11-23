@@ -19,6 +19,7 @@ from app.config.engine_defaults import (
     UNIT_MIX,
 )
 from app.schemas.realestate.realestate_request import ContributionRequest
+from app.routers.contribution_recon import get_recon_contribution
 from app.schemas.realestate.realestate_response import ContributionResponse
 from app.services.credit_service import consume_credit_token
 from app.services.organization_service import get_active_organization
@@ -125,6 +126,10 @@ async def get_contribution(req: ContributionRequest, request: Request, session: 
     user_id = request.session.get("user_id")
     if user_id is None:
         raise UnauthorizedException("로그인이 필요합니다.")
+
+    #재건축은 재건축 전용 로직(contribution_recon.py)으로 넘긴다. 아래는 재개발 계산 그대로다
+    if req.project_type == ProjectType.RECONSTRUCTION.value:
+        return await get_recon_contribution(req, request, session)
 
     try:
         sliders = dict(req.sliders)

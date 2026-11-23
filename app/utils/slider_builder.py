@@ -3,6 +3,13 @@ from app.services.engine.schema import ZoneSummary
 from app.services.engine.zone import COMMERCIAL_RATIO_MAX, DEFAULT_COMMERCIAL_RATIO_MAX, FarPlan, far_plan
 from app.services.predict.construction_cost import CostPrediction
 from app.services.predict.sale_price import SalePrediction
+from app.config.recon_defaults import (
+    RECON_COMPLETION_GAP_YEARS,
+    RECON_DEFAULT_COMPLETION_YEARS,
+    RECON_DEFAULT_PROJECT_PERIOD_YEARS,
+    RECON_PROJECT_PERIOD_TICKS,
+    RECON_PROJECT_PERIOD_TRACK,
+)
 from app.config.engine_defaults import (
     PARKING_MARGIN_DEFAULT,
     PARKING_MARGIN_MAX,
@@ -39,16 +46,24 @@ def _far_slider(plan: FarPlan) -> dict:
 
 
 #사업 기간 슬라이더
-def _period_slider() -> dict:
-    track_min, track_max = PROJECT_PERIOD_TRACK
+#  재건축은 재건축 실측값(recon_defaults — 구역지정 → 관리처분 6.5년)으로 만든다. 재개발 값은 그대로다
+def _period_slider(project_type: str = "재개발") -> dict:
+    if project_type == "재건축":
+        track_min, track_max = RECON_PROJECT_PERIOD_TRACK
+        value = [RECON_DEFAULT_PROJECT_PERIOD_YEARS, RECON_DEFAULT_COMPLETION_YEARS]
+        ticks, gap = RECON_PROJECT_PERIOD_TICKS, RECON_COMPLETION_GAP_YEARS
+    else:
+        track_min, track_max = PROJECT_PERIOD_TRACK
+        value = [DEFAULT_PROJECT_PERIOD_YEARS, DEFAULT_COMPLETION_YEARS]
+        ticks, gap = PROJECT_PERIOD_TICKS, COMPLETION_GAP_YEARS
     return {
-        "value": [DEFAULT_PROJECT_PERIOD_YEARS, DEFAULT_COMPLETION_YEARS],
+        "value": value,
         "min": track_min,
         "max": track_max,
         "step": 1,
         "range": True,
-        "ticks": PROJECT_PERIOD_TICKS,
-        "gap": {"value": COMPLETION_GAP_YEARS, "min": COMPLETION_GAP_MIN, "max": track_max - track_min},
+        "ticks": ticks,
+        "gap": {"value": gap, "min": COMPLETION_GAP_MIN, "max": track_max - track_min},
         "labels": ["분담금 고시일", "최종 인가"],
     }
 
@@ -105,7 +120,7 @@ def build_sliders(
         "rental_floor_band": {"value": DEFAULT_FLOOR_BAND, "options": FLOOR_BANDS},
 
         #사업 기간
-        "project_period_years": _period_slider(),
+        "project_period_years": _period_slider(project_type),
     }
 
     if household_count:
