@@ -46,6 +46,9 @@ APARTMENT_PRICES = CacheSpec("aptp", MONTH, "ApartmentPrice")
 #연속지적도 필지 타일 (cbt1:{x}:{y}) — 타일 크기는 cadastral_service.TILE_*_DEG. 크기를 바꾸면 prefix 버전을 올린다
 CADASTRAL_TILE = CacheSpec("cbt1", WEEK, "CadastralTile")
 
+#주소 → 좌표 변환 결과 (geo1:{정규화 주소})
+GEOCODE = CacheSpec("geo1", MONTH, "Geocode")
+
 #=== 크레딧 ===#
 #일일 무료 크레딧 잔액 (자정 만료)
 def daily_credits(user_id: int, date: str) -> str:

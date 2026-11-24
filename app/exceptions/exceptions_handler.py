@@ -36,6 +36,11 @@ class ServiceUnavailableException(CustomException):
         super().__init__(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, message=message)
 
 #사용자 정의 예외 처리기 등록 함수
+#사용자 정의 Not Found 예외 클래스 정의
+class NotFoundException(CustomException):
+    def __init__(self, message: str = "[ Backend ] : Not Found 404 Error"):
+        super().__init__(status_code=status.HTTP_404_NOT_FOUND, message=message)
+
 def add_exception_handlers(app: FastAPI):
     @app.exception_handler(CustomException)
     async def custom_exception_handler(request: Request, exc: CustomException):
