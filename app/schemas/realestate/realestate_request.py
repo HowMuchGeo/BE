@@ -108,6 +108,20 @@ class ContributionRequest(BaseModel):
         le=200,
         description="임대 1세대 전용면적(㎡). 임대 세대수 비율은 용적률 완화분에서 자동으로 정해지므로 입력받지 않는다",
     )
+    zoning: Optional[str] = Field(
+        None, max_length=40,
+        description="적용한 용도지역. /zone 응답 zone.zoning 을 그대로 넘긴다 — 재개발 의무 임대 면제(제1종일반주거지역 용도지역 유지) 판정에 쓴다",
+    )
+    base_zoning: Optional[str] = Field(
+        None, max_length=40,
+        description="종상향 전 원래 용도지역. /zone 응답 upzoning.base_zoning 을 그대로 넘긴다 (용도지역을 고르지 않았으면 null)",
+    )
+    rental_basis: Optional[str] = Field(
+        None,
+        pattern="^(area|households)$",
+        description="재개발 의무 임대 기준 (세부 설정). area = 연면적의 10% (기본) · households = 세대수의 15% "
+                    "(서울특별시고시 제2022-493호). 재건축은 의무 임대가 없어 쓰지 않는다",
+    )
     owner: OwnerRequestDTO
 
     #사업 유형

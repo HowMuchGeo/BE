@@ -137,6 +137,9 @@ class Allocation:
     #공공기여 기부채납 공공임대 세대수
     donated_rental_count : int = 0
 
+    #의무 임대 면제 (전체 세대수가 면제 기준 미만)
+    base_rental_exempt : bool = False
+
     #제54조 완화분 임대 세대수
     @property
     def uplift_rental_count(self) -> int:
@@ -151,33 +154,51 @@ def calc_allocation(params: ProjectParams, areas: Areas) -> Allocation:
     uplift_supply_m2 = supply_total_m2 - base_supply_m2
 
     base_rent_m2 = base_supply_m2 * params.base_rental_ratio
+    #세대수 기준 의무 임대 : 임대 세대수 = 비율 × 기준 구간 세대수 (분양 + 의무 임대).
+    #  기준 구간 세대수 = 기준 구간 공급면적 ÷ ((1 − 비율) × 분양 1세대 평균 공급면적 + 비율 × 임대 1세대 공급면적)
+    #  완화분으로 늘어난 세대는 비율 산정에서 뺀다 (국토교통부고시 제2024-26호 제4조⑧) → 기준 구간만 센다
+    if params.base_rental_household_ratio > 0 and params.base_rental_ratio > 0:
+        ratio = params.base_rental_household_ratio
+        mean_sale_supply_m2 = 1.0 / sum(mix.share / mix.supply_area_m2 for mix in params.unit_mix_list)
+        base_households = base_supply_m2 / ((1 - ratio) * mean_sale_supply_m2 + ratio * params.rental_supply_area_m2)
+        base_rent_m2 = ratio * base_households * params.rental_supply_area_m2
     uplift_rent_m2 = uplift_supply_m2 * params.uplift_rental_share
-    rent_target_m2 = base_rent_m2 + uplift_rent_m2
-
-    rental_count = int(rent_target_m2 / params.rental_supply_area_m2)
-
-    #의무 임대 세대수
-    base_rental_count = min(int(base_rent_m2 / params.rental_supply_area_m2), rental_count)
-    rent_total_m2 = rental_count * params.rental_supply_area_m2
-
-    #기부채납 공공임대
     donated_rental_count = params.donated_rental_count
     donated_m2 = donated_rental_count * params.rental_supply_area_m2
-    sale_supply_m2 = max(supply_total_m2 - rent_total_m2 - donated_m2, 0.0)
 
-    #평형별 세대수
-    unit_types = []
-    for mix in params.unit_mix_list:
-        count = int(sale_supply_m2 * mix.share / mix.supply_area_m2)
-        unit_types.append(UnitType(mix.name, mix.exclusive_area_m2, mix.supply_area_m2, count))
+    def allocate(base_m2: float, exempt: bool = False) -> Allocation:
+        rental_count = int((base_m2 + uplift_rent_m2) / params.rental_supply_area_m2)
 
-    return Allocation(
-        unit_types,
-        rental_count,
-        sale_supply_m2,
-        base_rental_count=base_rental_count,
-        donated_rental_count=donated_rental_count,
-    )
+        #의무 임대 세대수
+        base_rental_count = min(int(base_m2 / params.rental_supply_area_m2), rental_count)
+        rent_total_m2 = rental_count * params.rental_supply_area_m2
+
+        #기부채납 공공임대
+        sale_supply_m2 = max(supply_total_m2 - rent_total_m2 - donated_m2, 0.0)
+
+        #평형별 세대수
+        unit_types = []
+        for mix in params.unit_mix_list:
+            count = int(sale_supply_m2 * mix.share / mix.supply_area_m2)
+            unit_types.append(UnitType(mix.name, mix.exclusive_area_m2, mix.supply_area_m2, count))
+
+        return Allocation(
+            unit_types,
+            rental_count,
+            sale_supply_m2,
+            base_rental_count=base_rental_count,
+            donated_rental_count=donated_rental_count,
+            base_rental_exempt=exempt,
+        )
+
+    #의무 임대 면제 : 의무 임대 없이 지었을 때 전체 세대수가 기준 미만이면 짓지 않는다
+    if params.rental_exempt_below_households > 0 and base_rent_m2 > 0:
+        without = allocate(0.0, exempt=True)
+        households = sum(u.count for u in without.unit_types) + without.rental_count + without.donated_rental_count
+        if households < params.rental_exempt_below_households:
+            return without
+
+    return allocate(base_rent_m2)
 
 #종후자산 (총수입)
 @dataclass

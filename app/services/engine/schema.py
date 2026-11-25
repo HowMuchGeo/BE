@@ -50,6 +50,14 @@ class ProjectParams:
 
     rental_exclusive_area_m2 : float = 39.0
 
+    #재개발 의무 임대를 세대수 기준으로 잡을 때의 비율. 0 이면 연면적 기준(base_rental_ratio)으로 잡는다
+    #  서울특별시고시 제2022-493호 : 세대수의 15% 또는 연면적의 10% 중 하나
+    base_rental_household_ratio : float = 0.0
+
+    #건설하는 주택 전체 세대수가 이 값 미만이면 의무 임대를 짓지 않는다. 0 이면 판정하지 않는다
+    #  국토교통부고시 제2024-26호 제4조④1 : 200세대 미만
+    rental_exempt_below_households : int = 0
+
     #의무 임대 인수가격 시점 보정 배수
     rental_cost_multiplier : float = 1.0
 
