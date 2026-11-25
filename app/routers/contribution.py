@@ -15,6 +15,9 @@ from app.config.engine_defaults import (
     HOUSING_REALIZATION_RATES,
     RECON_BASE_RENTAL_RATIO,
     RECON_UPLIFT_RENTAL_SHARE,
+    REDEV_RENTAL_EXEMPT_BELOW_HOUSEHOLDS,
+    REDEV_RENTAL_EXEMPT_ZONING,
+    REDEV_RENTAL_HOUSEHOLD_RATIO,
     PRIOR_ASSET_LEAD_YEARS,
     UNIT_MIX,
 )
@@ -68,7 +71,7 @@ from app.services.engine.rental_cost import (
     uplift_takeover_price_per_m2,
 )
 from app.services.engine.schema import PER_PYEONG_TO_PER_M2, ProjectType, UnitMix, OwnerInput, ProjectParams
-from app.services.engine.zone import SIGUNGU_NAME, sigungu_code
+from app.services.engine.zone import SIGUNGU_NAME, normalize_zoning, sigungu_code
 from app.services.predict import trend
 from app.services.predict.construction_cost import contract_excess_rate, load_index
 from app.services.predict.sale_price import escalate as escalate_sale
@@ -293,11 +296,25 @@ async def get_contribution(req: ContributionRequest, request: Request, session: 
 
         #임대 평형
         engine_params = dict(ENGINE_DEFAULTS_FOR_PARAMS)
+        zoning_exempt = False
 
         #재건축
         if project_type == ProjectType.RECONSTRUCTION:
             engine_params["base_rental_ratio"] = RECON_BASE_RENTAL_RATIO
             engine_params["uplift_rental_share"] = RECON_UPLIFT_RENTAL_SHARE
+        else:
+            #재개발 의무 임대 : 전체 200세대 미만이면 면제 (국토교통부고시 제2024-26호 제4조④1),
+            #  세대수 기준을 고르면 세대수의 15% (서울특별시고시 제2022-493호 — 기본은 연면적의 10%)
+            engine_params["rental_exempt_below_households"] = REDEV_RENTAL_EXEMPT_BELOW_HOUSEHOLDS
+            if req.rental_basis == "households":
+                engine_params["base_rental_household_ratio"] = REDEV_RENTAL_HOUSEHOLD_RATIO
+            #제1종일반주거지역에서 용도지역을 바꾸지 않으면 면제 (같은 고시 제4조④5).
+            #  용도지역을 모르면(예전 요청) 판정하지 않는다. base_zoning 이 없으면 조회한 용도지역 그대로라는 뜻이다
+            applied_zoning = normalize_zoning(req.zoning or "")
+            original_zoning = normalize_zoning(req.base_zoning or "") or applied_zoning
+            zoning_exempt = applied_zoning == REDEV_RENTAL_EXEMPT_ZONING and original_zoning == REDEV_RENTAL_EXEMPT_ZONING
+            if zoning_exempt:
+                engine_params["base_rental_ratio"] = 0.0
         if req.rental_exclusive_area_m2:
             engine_params["rental_exclusive_area_m2"] = req.rental_exclusive_area_m2
             engine_params["rental_supply_area_m2"] = round(
@@ -556,6 +573,16 @@ async def get_contribution(req: ContributionRequest, request: Request, session: 
 
         #재건축 안내
         project_warnings = []
+        if zoning_exempt:
+            project_warnings.append(
+                f"{REDEV_RENTAL_EXEMPT_ZONING}에서 용도지역을 바꾸지 않는 계획이라 의무 임대주택을 계산에 넣지 않았습니다 "
+                "(국토교통부고시 「정비사업의 임대주택 및 주택규모별 건설비율」 제4조)."
+            )
+        elif alloc.base_rental_exempt:
+            project_warnings.append(
+                f"전체 세대수가 {REDEV_RENTAL_EXEMPT_BELOW_HOUSEHOLDS}세대 미만이라 의무 임대주택을 계산에 넣지 않았습니다 "
+                "(국토교통부고시 「정비사업의 임대주택 및 주택규모별 건설비율」 제4조)."
+            )
         if project_type == ProjectType.RECONSTRUCTION:
 
             #재초환은 이 서비스의 계산 범위가 아님
@@ -674,6 +701,13 @@ async def get_contribution(req: ContributionRequest, request: Request, session: 
             ),
             "rental_uplift_price_announced_per_m2": round(uplift_price_announced, 2),
             "rental_uplift_price_final_per_m2": round(uplift_price_announced * params.uplift_rental_cost_multiplier, 2),
+            #의무 임대 기준 (area = 연면적 10% · households = 세대수 15%) 과 200세대 미만 면제 여부
+            "rental_basis": "households" if engine_params.get("base_rental_household_ratio") else "area",
+            "rental_exempt": alloc.base_rental_exempt or zoning_exempt,
+            "rental_exempt_reason": (
+                "제1종일반주거지역 용도지역 유지" if zoning_exempt
+                else (f"{REDEV_RENTAL_EXEMPT_BELOW_HOUSEHOLDS}세대 미만" if alloc.base_rental_exempt else None)
+            ),
             "rental_base_count": alloc.base_rental_count,
             "rental_uplift_count": alloc.uplift_rental_count,
             "rental_land_price_per_m2": round(rental_land_price_per_m2, 2),
