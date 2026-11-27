@@ -76,8 +76,9 @@ class OrganizationScenarioRequest(BaseModel):
                     raise ValueError(f"{key} 슬라이더 값이 올바르지 않습니다.")
             elif key == "project_period_years":
                 #손잡이 두 개 [분담금 고시일, 최종 인가] (년). 트랙 안 · 최소 간격 이상
-                #시나리오에 사업 유형이 없어 재개발(10~30) · 재건축(3~20) 트랙을 합친 범위로 본다
-                track_min = min(PROJECT_PERIOD_TRACK[0], RECON_PROJECT_PERIOD_TRACK[0])
+                #시나리오에 사업 유형 · 진행 단계가 없어 가장 넓은 범위로 본다 :
+                #  아래는 0년 (관리처분 이후 단계는 고시일이 오늘이다), 위는 재개발 · 재건축 트랙 중 큰 쪽
+                track_min = 0
                 track_max = max(PROJECT_PERIOD_TRACK[1], RECON_PROJECT_PERIOD_TRACK[1])
                 if (
                     not isinstance(value, list) or len(value) != 2

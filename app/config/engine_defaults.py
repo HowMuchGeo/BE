@@ -74,6 +74,24 @@ PROJECT_PERIOD_TRACK = (7, 30)
 COMPLETION_GAP_YEARS = 7
 COMPLETION_GAP_MIN = 3
 
+#진행 단계 (재개발) — 지금 사업이 어느 단계인지 고르면 사업 기간 기본값이 "그 단계 → 관리처분" 남은 기간으로 바뀐다
+#  period = [분담금 고시일, 최종 인가] (오늘부터 년), track = 슬라이더 범위. 통계 · 방법은 위 사업 기간과 같다
+#    정비구역 지정 : 9.0 (위와 같다) → [9, 16]
+#    조합설립인가  : 조합설립 → 관리처분 7.7 → 8, 준공 7.7 + 6.95 = 14.65 → 15
+#    사업시행인가  : 사업시행 → 관리처분 3.1 (2015년 이후 사업시행 46건, 도달 31) → 3, 준공 3.1 + 6.95 = 10.05 → 10
+#    관리처분인가  : 0, 준공 = 관리처분 → 착공 3.9 + 공사 3.05 = 6.95 → 7
+#    착공          : 0, 준공 = 공사 3.05 → 3
+#  종전자산 평가 시점(고시일 − 3.3년)은 0 아래로 내려가지 않으므로, 사업시행인가 이후 단계는 오늘 기준으로 평가된다
+PROJECT_STAGES = [
+    {"key": "designation", "label": "정비구역 지정", "period": [9, 16], "track": [7, 30]},
+    {"key": "union", "label": "조합설립인가", "period": [8, 15], "track": [0, 30]},
+    {"key": "implementation", "label": "사업시행인가", "period": [3, 10], "track": [0, 30]},
+    {"key": "management", "label": "관리처분인가", "period": [0, 7], "track": [0, 30]},
+    {"key": "construction", "label": "착공", "period": [0, 3], "track": [0, 30]},
+]
+PROJECT_STAGE_DEFAULT = "designation"
+PROJECT_STAGE_KEYS = [s["key"] for s in PROJECT_STAGES]
+
 #착공 → 준공 (년)
 CONSTRUCTION_YEARS = 3.05
 

@@ -11,6 +11,7 @@ from app.config.recon_defaults import (
     RECON_DEFAULT_COMPLETION_YEARS,
     RECON_DEFAULT_PROJECT_PERIOD_YEARS,
     RECON_PRIOR_ASSET_LEAD_YEARS,
+    RECON_PROJECT_STAGES,
     RECON_SMALL_UNIT_MAX_AREA_M2,
     RECON_SMALL_UNIT_MIN_SHARE,
 )
@@ -104,14 +105,17 @@ def _shift_ym(ym: str, years: float) -> str:
 #사업 기간 슬라이더 값 → (분담금 고시일, 최종 인가) 년. 기본값만 재건축 실측(recon_defaults)이다.
 #  [고시일, 최종 인가] 가 기본이다. 숫자 하나면 예전 요청(고시일만)으로 보고 기본 간격을 더한다.
 #  간격은 슬라이더와 같은 범위로 묶는다 — 프론트를 거치지 않은 요청도 같은 규칙을 따르게
-def _parse_period(value) -> tuple[float, float]:
+#  사업 기간을 보내지 않으면 진행 단계의 기본 기간을 쓴다 (단계도 없으면 정비구역 지정)
+def _parse_period(value, stage: str | None = None) -> tuple[float, float]:
     if isinstance(value, (list, tuple)) and len(value) >= 2:
         mgmt, complete = float(value[0]), float(value[1])
     elif value is not None and not isinstance(value, (list, tuple, dict)):
         mgmt = float(value)
         complete = mgmt + RECON_COMPLETION_GAP_YEARS
     else:
-        mgmt, complete = float(RECON_DEFAULT_PROJECT_PERIOD_YEARS), float(RECON_DEFAULT_COMPLETION_YEARS)
+        period = next((s["period"] for s in RECON_PROJECT_STAGES if s["key"] == stage), None)
+        mgmt, complete = period if period else (RECON_DEFAULT_PROJECT_PERIOD_YEARS, RECON_DEFAULT_COMPLETION_YEARS)
+        mgmt, complete = float(mgmt), float(complete)
     mgmt = max(mgmt, 0.0)
     #최종 인가는 고시일 + 최소 간격(공사기간 중앙값) 이상. 최대 제한은 없다 (슬라이더와 같은 규칙)
     complete = max(complete, mgmt + COMPLETION_GAP_MIN)
@@ -153,6 +157,8 @@ async def get_recon_contribution(req: ContributionRequest, request: Request, ses
         #  MEMBER_PRICE_TARGET_RATE(100%)가 되도록 아래 단계 계산 직전에 역산한다.
         #  숫자를 보내면(사용자가 슬라이더를 움직였다) 그 값을 그대로 쓴다
         member_price_auto = sliders.get("member_price_ratio") is None
+        #자동일 때 맞출 관리처분 비례율. 화면의 「비례율만 재조정」 값이 오면 그 값, 없으면 기본 100%
+        target_rate = float(req.member_price_target_rate or MEMBER_PRICE_TARGET_RATE)
         if member_price_auto:
             #역산 전 임시값. ProjectParams 를 만들려면 숫자가 필요하다 (결과에는 쓰이지 않는다)
             sliders["member_price_ratio"] = MEMBER_PRICE_RATIO_MAX
@@ -163,7 +169,7 @@ async def get_recon_contribution(req: ContributionRequest, request: Request, ses
 
         #사업 기간 : [분담금 고시일, 최종 인가] (오늘부터 몇 년 뒤). ProjectParams 의 필드가 아니라
         #  항목마다 다른 시점을 정하는 데 쓴다
-        mgmt_years, complete_years = _parse_period(sliders.pop("project_period_years", None))
+        mgmt_years, complete_years = _parse_period(sliders.pop("project_period_years", None), req.project_stage)
 
         #항목별 시점 (오늘부터 년)
         #  종전자산 평가    = 사업시행인가 = 고시일 − 1.9 (도시정비법 : 사업시행계획인가 고시일 기준 평가, 재건축 실측)
@@ -587,7 +593,7 @@ async def get_recon_contribution(req: ContributionRequest, request: Request, ses
         if member_price_auto:
             mgmt_params = build_params(sale_mgmt, 1.0, mgmt_years, 1.0)
             mgmt_alloc = calc_allocation(mgmt_params, calc_area(mgmt_params))
-            member_ratio_solved = solve_member_price_ratio(mgmt_params, mgmt_alloc, MEMBER_PRICE_TARGET_RATE)
+            member_ratio_solved = solve_member_price_ratio(mgmt_params, mgmt_alloc, target_rate)
             if member_ratio_solved is None:
                 ratio = MEMBER_PRICE_RATIO_MAX
                 member_price_warnings.append("조합원 분양 몫이 없어 조합원분양가 비율을 역산하지 못했습니다.")
@@ -626,12 +632,15 @@ async def get_recon_contribution(req: ContributionRequest, request: Request, ses
             floor_text = "0원으로 낮춰도" if MEMBER_PRICE_RATIO_MIN <= 0 else f"일반분양가의 {MEMBER_PRICE_RATIO_MIN:.0%}까지 낮춰도"
             member_price_warnings.append(
                 f"조합원분양가를 {floor_text} 관리처분 비례율이 "
-                f"{mgmt_rate:.0f}%로 {MEMBER_PRICE_TARGET_RATE:.0f}%를 넘습니다. 사업성이 매우 높은 조건입니다."
+                f"{mgmt_rate:.0f}%로 {target_rate:.0f}%를 넘습니다. 사업성이 매우 높은 조건입니다."
             )
         elif member_ratio_bound == "max":
             member_price_warnings.append(
                 f"조합원분양가를 일반분양가와 같게 정해도 관리처분 비례율이 {mgmt_rate:.0f}%로 "
-                f"{MEMBER_PRICE_TARGET_RATE:.0f}%에 못 미칩니다. 사업성이 낮은 조건입니다."
+                f"{target_rate:.0f}%에 못 미칩니다. "
+                #기본 목표(100%)에도 못 미치면 사업성이 낮은 것이고, 사용자가 올려 잡은 목표에 못 미치면 닿는 데까지만 계산한 것이다
+                + ("사업성이 낮은 조건입니다." if target_rate <= MEMBER_PRICE_TARGET_RATE
+                   else f"조합원분양가를 더 올릴 수 없어 {mgmt_rate:.0f}%로 계산했습니다.")
             )
 
         #엔진의 "통상 범위" 경고는 ④ 준공 정산 비례율을 본다. 자동이면 ① 이 100% 로 맞춰져 있으므로
@@ -716,6 +725,7 @@ async def get_recon_contribution(req: ContributionRequest, request: Request, ses
 
         member_price_ratio = sliders.get("member_price_ratio", 0.0)
         timeline = {
+            "project_stage": req.project_stage or "designation",
             "now_ym": now_ym,
             "prior_ym": prior_ym,
             "mgmt_ym": mgmt_ym,
@@ -740,7 +750,7 @@ async def get_recon_contribution(req: ContributionRequest, request: Request, ses
             "general_price_start_per_m2": round(sale_start, 2),
             #비율 : auto 면 관리처분 비례율이 target_rate 가 되도록 역산한 값 (solved = 범위 제한 전, bound = 걸린 끝 min/max)
             "member_price_mode": "auto" if member_price_auto else "manual",
-            "member_price_target_rate": MEMBER_PRICE_TARGET_RATE if member_price_auto else None,
+            "member_price_target_rate": target_rate if member_price_auto else None,
             "member_price_ratio_solved": round(member_ratio_solved, 4) if member_ratio_solved is not None else None,
             "member_price_ratio_bound": member_ratio_bound,
             "member_price_ratio": member_price_ratio,

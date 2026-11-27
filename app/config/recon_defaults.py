@@ -22,6 +22,21 @@ RECON_PROJECT_PERIOD_TRACK = (3, 20)        # 트랙 : 고시일 P10(3.3) ~ 최�
 #  최소 간격은 재개발과 같다 (engine_defaults.COMPLETION_GAP_MIN = 공사기간 3.05 → 3)
 RECON_COMPLETION_GAP_YEARS = 5
 
+#진행 단계 (재건축) — 고르면 사업 기간 기본값이 "그 단계 → 관리처분" 남은 기간으로 바뀐다 (재개발은 engine_defaults.PROJECT_STAGES)
+#  위와 같은 통계 (공동주택재건축 + 아파트지구재건축, 그 단계 → 관리처분 날짜가 둘 다 있는 37건의 중앙값)
+#    정비구역 지정 : 6.50 → [7, 12]
+#    조합설립인가  : 5.01 (P25 4.0 / P75 6.1) → 5, 준공 5.01 + 5.43 = 10.44 → 10
+#    사업시행인가  : 1.88 → 2, 준공 1.88 + 5.43 = 7.31 → 7
+#    관리처분인가  : 0, 준공 = 관리처분 → 착공 2.38 + 공사 3.05 = 5.43 → 5
+#    착공          : 0, 준공 = 공사 3.05 → 3
+RECON_PROJECT_STAGES = [
+    {"key": "designation", "label": "정비구역 지정", "period": [7, 12], "track": [3, 20]},
+    {"key": "union", "label": "조합설립인가", "period": [5, 10], "track": [0, 20]},
+    {"key": "implementation", "label": "사업시행인가", "period": [2, 7], "track": [0, 20]},
+    {"key": "management", "label": "관리처분인가", "period": [0, 5], "track": [0, 20]},
+    {"key": "construction", "label": "착공", "period": [0, 3], "track": [0, 20]},
+]
+
 #종전자산 평가 기준시점이 관리처분보다 얼마나 앞서는가 (년).
 #  도시정비법상 종전자산은 사업시행계획인가 고시일 기준으로 평가한다 → 사업시행 → 관리처분 중앙값 1.88 (위 통계)
 #  재개발은 3.3년 (engine_defaults.PRIOR_ASSET_LEAD_YEARS)

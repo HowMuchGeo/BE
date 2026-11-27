@@ -9,6 +9,7 @@ from app.config.recon_defaults import (
     RECON_DEFAULT_PROJECT_PERIOD_YEARS,
     RECON_PROJECT_PERIOD_TICKS,
     RECON_PROJECT_PERIOD_TRACK,
+    RECON_PROJECT_STAGES,
 )
 from app.config.engine_defaults import (
     PARKING_MARGIN_DEFAULT,
@@ -22,25 +23,32 @@ from app.config.engine_defaults import (
     MEMBER_COUNT_MIN_RATIO,
     MEMBER_PRICE_RATIO_MAX,
     MEMBER_PRICE_RATIO_MIN,
+    MEMBER_PRICE_TARGET_RATE,
     OTHER_COST_RATIO_BY_TYPE,
     OTHER_COST_RATIO_DEFAULT,
     OTHER_COST_RATIO_MAX,
     OTHER_COST_RATIO_MIN,
     PROJECT_PERIOD_TICKS,
     PROJECT_PERIOD_TRACK,
+    PROJECT_STAGE_DEFAULT,
+    PROJECT_STAGES,
 )
 
 #용적률 노드 슬라이더
+#  종상향이면 far_plan 의 첫 노드가 "종상향 최소"(최소 공공기여만 내고 받는 용적률)다.
+#  이 노드는 화면 선택지로 내보내지 않는다 — 종상향 최소 공공기여는 min_contribution 으로 계산에서만 쓴다 (2026-11-27).
+#  그러면 종상향일 때 기본값은 다음 노드(상한)가 된다
 def _far_slider(plan: FarPlan) -> dict:
-    nodes = [n.value for n in plan.nodes]
-    default = next((n.value for n in plan.nodes if "허용" in n.label), nodes[0])
+    shown = [n for n in plan.nodes if "종상향 최소" not in n.label] or list(plan.nodes)
+    nodes = [n.value for n in shown]
+    default = next((n.value for n in shown if "허용" in n.label), nodes[0])
     return {
         "value": default,
         "options": nodes,
         "min": nodes[0],
         "max": nodes[-1],
-        "tiers": [n.label for n in plan.nodes],
-        "contributions": [round(n.contribution, 4) for n in plan.nodes],
+        "tiers": [n.label for n in shown],
+        "contributions": [round(n.contribution, 4) for n in shown],
         "min_contribution": round(plan.min_contribution, 4),
     }
 
@@ -56,6 +64,7 @@ def _period_slider(project_type: str = "재개발") -> dict:
         track_min, track_max = PROJECT_PERIOD_TRACK
         value = [DEFAULT_PROJECT_PERIOD_YEARS, DEFAULT_COMPLETION_YEARS]
         ticks, gap = PROJECT_PERIOD_TICKS, COMPLETION_GAP_YEARS
+    stages = RECON_PROJECT_STAGES if project_type == "재건축" else PROJECT_STAGES
     return {
         "value": value,
         "min": track_min,
@@ -65,6 +74,9 @@ def _period_slider(project_type: str = "재개발") -> dict:
         "ticks": ticks,
         "gap": {"value": gap, "min": COMPLETION_GAP_MIN, "max": track_max - track_min},
         "labels": ["분담금 고시일", "최종 인가"],
+        #진행 단계 : 고르면 value · min · max 를 그 단계의 period · track 으로 바꾸고, 계산 요청에 project_stage 로 보낸다
+        "stage": PROJECT_STAGE_DEFAULT,
+        "stages": [dict(s) for s in stages],
     }
 
 
@@ -85,7 +97,14 @@ def build_sliders(
         "floor_area_ratio": _far_slider(far or far_plan(zone.zoning, zone.far_min, zone.far_max)),
 
         #조합원 분양가 비율
-        "member_price_ratio": {"value": None, "min": MEMBER_PRICE_RATIO_MIN, "max": MEMBER_PRICE_RATIO_MAX, "auto": True},
+        #  자동(auto)이면 관리처분 비례율이 target_rate 가 되도록 비율을 역산한다 → 비율 슬라이더는 잠그고 「비례율만 재조정」 칸을 연다.
+        #  자동을 끄면 사용자가 비율을 정하고 비례율은 계산 결과가 된다 → 「비례율만 재조정」 칸을 잠근다.
+        #  locks 는 그 상태에서 입력을 막을 칸이다 (member_price_target_rate 는 계산 요청의 같은 이름 값)
+        "member_price_ratio": {
+            "value": None, "min": MEMBER_PRICE_RATIO_MIN, "max": MEMBER_PRICE_RATIO_MAX, "auto": True,
+            "target_rate": {"value": MEMBER_PRICE_TARGET_RATE, "min": 50, "max": 200},
+            "locks": {"auto": ["member_price_ratio"], "manual": ["member_price_target_rate"]},
+        },
 
         #기타사업비 비율
         "other_cost_ratio": {

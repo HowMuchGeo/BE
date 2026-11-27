@@ -117,6 +117,19 @@ class ContributionRequest(BaseModel):
         None, max_length=40,
         description="종상향 전 원래 용도지역. /zone 응답 upzoning.base_zoning 을 그대로 넘긴다 (용도지역을 고르지 않았으면 null)",
     )
+    member_price_target_rate: Optional[float] = Field(
+        None,
+        ge=50,
+        le=200,
+        description="조합원분양가 비율이 자동(sliders.member_price_ratio = null)일 때 맞출 관리처분 비례율(%). "
+                    "화면의 「비례율만 재조정」 칸. 없으면 100. 조합이 정한 비례율을 아는 경우에 넣는다",
+    )
+    project_stage: Optional[str] = Field(
+        None,
+        pattern="^(designation|union|implementation|management|construction)$",
+        description="진행 단계 (/zone 응답 sliders.project_period_years.stages 의 key). "
+                    "sliders.project_period_years 를 보내지 않으면 이 단계의 기본 사업 기간으로 계산한다. 없으면 정비구역 지정",
+    )
     rental_basis: Optional[str] = Field(
         None,
         pattern="^(area|households)$",
