@@ -54,7 +54,8 @@ class ParcelValuationDTO(BaseModel):
 
 #Owner 요청 스키마
 class OwnerRequestDTO(BaseModel):
-    desired_unit: str = Field(..., description="선택 평형 (예: '84')")
+    #화면이 평형별 분담금을 모두 보여 주므로 고르지 않아도 된다. 비우면 응답 맨 위 요약 값(member_price · contribution)은 첫 평형 기준이다
+    desired_unit: str = Field("", description="선택 평형 (예: '84'). 생략 가능 — 평형별 분담금은 unit_contributions 에 모두 들어 있다")
     official_price: Optional[float] = Field(None, description="공시가격(만원). 없으면 선택 구역 공시지가를 조합원 수로 나눈 1인분을 쓴다")
     pnu: Optional[str] = Field(None, min_length=19, max_length=19, description="내 필지 PNU. 지정하면 그 필지 기준으로 개인화된다")
     exclusive_area_m2: Optional[float] = Field(None, gt=0, le=1000, description="집합건물에서 내 전유면적(㎡). 없으면 세대수로 균등 분할한다")
